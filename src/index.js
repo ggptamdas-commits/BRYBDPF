@@ -19,7 +19,9 @@ function html(content, status = 200) {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=60"
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0"
     }
   });
 }
@@ -147,19 +149,21 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
 
     const messageHtml = `🚨 <b>জরুরি রক্তের রিকোয়েস্ট অ্যালার্ট!</b> 🚨\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `🩸 <b>রক্তের গ্রুপ:</b> <code>${requestData.blood_group}</code> (${requestData.units} ব্যাগ)\n` +
+      `🩸 <b>রোগীর প্রয়োজনীয় রক্তের গ্রুপ:</b> <code>${requestData.blood_group}</code> (${requestData.units} ব্যাগ)\n` +
       `👤 <b>রোগীর নাম:</b> ${requestData.patient_name}\n` +
-      `🏥 <b>হাসপাতাল:</b> ${requestData.hospital_name}\n` +
-      `📍 <b>ঠিকানা:</b> ${requestData.district}, ${requestData.location}\n` +
-      `📞 <b>যোগাযোগের নম্বর:</b> <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>\n` +
+      `🏥 <b>হাসপাতাল:</b> ${requestData.hospital_name}, ${requestData.district}\n` +
+      `📍 <b>ঠিকানা:</b> ${requestData.location}\n` +
       `⏰ <b>প্রয়োজনের সময়:</b> ${requestData.needed_by}\n` +
-      `ℹ️ <b>জরুরিতা:</b> ${requestData.urgency || "Emergency"}\n` +
-      (requestData.note ? `📝 <b>বিবরণ:</b> ${requestData.note}\n` : "") +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📋 <b>সম্ভাব্য ম্যাচিং ডোনার (${matchedDonors.length} জন):</b>\n\n` +
+      `🤝 <b>আবেদনকারী (প্রতিনিধি):</b> ${requestData.requester_name || "স্বজন"}\n` +
+      `🩸 <b>প্রতিনিধির নিজের রক্তের গ্রুপ:</b> <code>${requestData.requester_blood_group || "N/A"}</code>\n` +
+      `📞 <b>যোগাযোগের নম্বর:</b> <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>\n` +
+      (requestData.note ? `📝 <b>নোট:</b> ${requestData.note}\n` : "") +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `📋 <b>রোগীর জন্য সম্ভাব্য ডোনার তালিকা (${requestData.blood_group}):</b>\n\n` +
       donorText + `\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚡ <b>এক ক্লিকে রিকোয়েস্টকারীকে ডোনার লিস্ট পাঠান:</b>\n` +
+      `⚡ <b>এক ক্লিকে আবেদনকারীকে ডোনার লিস্ট পাঠান:</b>\n` +
       `👉 <a href="${waShareUrl}">WhatsApp-এ ডোনার লিস্ট পাঠান</a>`;
 
     for (const uid of uids) {
@@ -286,10 +290,11 @@ export default {
         const body = await request.json();
         const {
           patient_name, blood_group, units, hospital_name, district, location,
-          contact_phone, urgency, needed_by, note,
+          needed_by, note,
+          requester_name, contact_phone, requester_blood_group, requester_age,
+          requester_gender, requester_district, requester_area,
           agreed_future_donation, agreed_data_save,
-          captcha_token, captcha_answer,
-          donor_name, donor_age, donor_gender, donor_area
+          captcha_token, captcha_answer
         } = body;
 
         const isCaptchaValid = await verifyCaptcha(captcha_token, captcha_answer);
@@ -304,11 +309,16 @@ export default {
         }
 
         if (!patient_name || !blood_group || !hospital_name || !district || !location || !contact_phone || !needed_by) {
-          return json({ error: "অনুগ্রহ করে সকল আবশ্যকীয় তথ্য পূরণ করুন।" }, 400);
+          return json({ error: "রোগীর সকল আবশ্যকীয় তথ্য পূরণ করুন।" }, 400);
+        }
+
+        if (!requester_name || !requester_blood_group) {
+          return json({ error: "আবেদনকারী / প্রতিনিধির নাম এবং নিজস্ব রক্তের গ্রুপ প্রদান করুন।" }, 400);
         }
 
         const cleanPhone = contact_phone.trim();
 
+        // 24-Hour Rate Limiting Check for same phone
         const recentReq = await env.DB.prepare(`
           SELECT id FROM blood_requests 
           WHERE contact_phone = ? 
@@ -321,34 +331,50 @@ export default {
           }, 429);
         }
 
+        // Register the REQUESTER (not the patient) as a donor with their own blood group!
         const existingDonor = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
-        if (!existingDonor) {
-          const dName = donor_name && donor_name.trim() ? donor_name.trim() : patient_name.trim() + " (রোগীর প্রতিনিধি)";
-          const dAge = parseInt(donor_age, 10) || 25;
-          const dGender = donor_gender || "Other";
-          const dArea = donor_area && donor_area.trim() ? donor_area.trim() : location.trim();
+        const reqDist = (requester_district && requester_district.trim()) ? requester_district.trim() : district.trim();
+        const reqAr = (requester_area && requester_area.trim()) ? requester_area.trim() : location.trim();
+        const reqAge = parseInt(requester_age, 10) || 26;
+        const reqGen = requester_gender || "Other";
 
+        if (!existingDonor) {
           await env.DB.prepare(`
             INSERT INTO donors (
               name, blood_group, phone, district, area, age, gender,
               last_donation_date, total_donations, is_available,
               agreed_future_donation, agreed_data_save
             ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, 1, 1, 1)
-          `).bind(dName, blood_group.trim(), cleanPhone, district.trim(), dArea, dAge, dGender).run();
+          `).bind(requester_name.trim(), requester_blood_group.trim(), cleanPhone, reqDist, reqAr, reqAge, reqGen).run();
+        } else {
+          await env.DB.prepare(`
+            UPDATE donors SET 
+              name = ?, 
+              blood_group = ?, 
+              district = ?, 
+              area = ?, 
+              is_available = 1,
+              updated_at = datetime('now')
+            WHERE id = ?
+          `).bind(requester_name.trim(), requester_blood_group.trim(), reqDist, reqAr, existingDonor.id).run();
         }
 
+        // Insert blood request with patient info AND requester info
         await env.DB.prepare(`
           INSERT INTO blood_requests (
             patient_name, blood_group, units, hospital_name, district, location,
-            contact_phone, urgency, needed_by, note, status,
+            contact_phone, requester_name, requester_blood_group,
+            urgency, needed_by, note, status,
             agreed_future_donation, agreed_data_save
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 1, 1)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Urgent', ?, ?, 'Pending', 1, 1)
         `).bind(
           patient_name.trim(), blood_group.trim(), parseInt(units, 10) || 1,
           hospital_name.trim(), district.trim(), location.trim(), cleanPhone,
-          urgency || "Urgent", needed_by.trim(), note ? note.trim() : ""
+          requester_name.trim(), requester_blood_group.trim(),
+          needed_by.trim(), note ? note.trim() : ""
         ).run();
 
+        // Search for donors matching the PATIENT's needed blood group
         const { results: matchedDonors } = await env.DB.prepare(`
           SELECT id, name, blood_group, district, area, phone, age
           FROM donors
@@ -360,7 +386,8 @@ export default {
         if (ctx && ctx.waitUntil) {
           ctx.waitUntil(sendTelegramAlert(env, {
             patient_name, blood_group, units, hospital_name, district, location,
-            contact_phone: cleanPhone, urgency, needed_by, note
+            contact_phone: cleanPhone, needed_by, note,
+            requester_name, requester_blood_group
           }, matchedDonors || []));
         }
 
