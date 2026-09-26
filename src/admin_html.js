@@ -185,10 +185,9 @@ export default `<!DOCTYPE html>
             <table class="w-full text-left text-xs text-slate-600">
               <thead class="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
                 <tr>
-                  <th class="p-3">রোগী</th>
-                  <th class="p-3">গ্রুপ/ব্যাগ</th>
+                  <th class="p-3">রোগী ও প্রয়োজনীয় গ্রুপ</th>
                   <th class="p-3">হাসপাতাল ও এলাকা</th>
-                  <th class="p-3">যোগাযোগ</th>
+                  <th class="p-3">আবেদনকারী (প্রতিনিধি)</th>
                   <th class="p-3">সময়সীমা</th>
                   <th class="p-3">স্ট্যাটাস</th>
                   <th class="p-3 text-right">ডোনার লিস্ট ও শেয়ার</th>
@@ -486,10 +485,9 @@ export default `<!DOCTYPE html>
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-50 transition';
         tr.innerHTML = 
-          '<td class="p-3 font-bold text-slate-900">' + escapeHtml(r.patient_name) + '</td>' +
-          '<td class="p-3"><span class="px-2 py-0.5 bg-rose-100 text-crimson-700 font-extrabold rounded">' + r.blood_group + '</span> (' + r.units + ' ব্যাগ)</td>' +
+          '<td class="p-3 font-bold text-slate-900">' + escapeHtml(r.patient_name) + '<br><span class="px-2 py-0.5 bg-rose-100 text-crimson-700 font-extrabold rounded text-[11px]">' + r.blood_group + '</span> (' + r.units + ' ব্যাগ)</td>' +
           '<td class="p-3">' + escapeHtml(r.hospital_name) + '<br><span class="text-slate-400 text-[11px]">' + escapeHtml(r.district) + ', ' + escapeHtml(r.location) + '</span></td>' +
-          '<td class="p-3 font-mono font-medium">' + r.contact_phone + '</td>' +
+          '<td class="p-3"><b>' + escapeHtml(r.requester_name || r.patient_name) + '</b><br><span class="text-[11px] text-slate-500">গ্রুপ: <span class="font-bold text-slate-800">' + (r.requester_blood_group || '-') + '</span></span><br><a href="tel:' + r.contact_phone + '" class="font-mono text-blue-600 text-[11px]">' + r.contact_phone + '</a></td>' +
           '<td class="p-3">' + escapeHtml(r.needed_by) + '</td>' +
           '<td class="p-3">' +
             '<select onchange="updateRequestStatus(' + r.id + ', this.value)" class="text-xs font-semibold rounded p-1 border">' +
