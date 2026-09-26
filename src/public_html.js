@@ -66,17 +66,13 @@ export default `<!DOCTYPE html>
   </nav>
 
   <!-- Hero Section -->
-  <header class="relative overflow-hidden bg-gradient-to-b from-rose-50/60 via-white to-slate-50 pt-10 pb-12 border-b border-rose-100/60">
+  <header class="relative overflow-hidden bg-gradient-to-b from-rose-50/60 via-white to-slate-50 pt-12 pb-14 border-b border-rose-100/60">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-      <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-crimson-100/80 border border-crimson-200 text-crimson-800 text-xs sm:text-sm font-semibold mb-5">
-        <span class="flex h-2 w-2 relative"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-crimson-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-crimson-600"></span></span>
-        নিরাপদ রক্তদাতা ব্যবস্থাপনা ও জরুরি রক্ত সহায়তা নেটওয়ার্ক
-      </div>
       <h1 class="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight sm:leading-none">
         জরুরি রক্তের প্রয়োজনে পাশে আছে <span class="text-transparent bg-clip-text bg-gradient-to-r from-crimson-600 to-rose-500">BRYBDPF প্ল্যাটফর্ম</span>
       </h1>
       <p class="mt-4 sm:mt-5 text-sm sm:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-        রক্তদাতাদের ব্যক্তিগত ফোন নম্বর ও তথ্যের সর্বোচ্চ সুরক্ষা নিশ্চিত করতে পাবলিক তথ্য উন্মুক্ত রাখা হয় না। রক্তের প্রয়োজনে নিচের ফর্মে রিকোয়েস্ট পাঠান — অনুমোদিত অ্যাডমিন ও অটোমেটেড টেলিগ্রাম বটের মাধ্যমে দ্রুততম সময়ে রক্তদাতার সাথে সমন্বয় করা হবে।
+        রক্তের প্রয়োজনে নিচের ফর্মে রিকোয়েস্ট পাঠান — অনুমোদিত অ্যাডমিন ও অটোমেটেড টেলিগ্রাম বটের মাধ্যমে দ্রুততম সময়ে রক্তদাতার সাথে সমন্বয় করা হবে।
       </p>
       <div class="mt-7 flex flex-wrap items-center justify-center gap-3">
         <a href="#request-section" class="tap-target inline-flex items-center px-6 py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white font-semibold text-sm sm:text-base shadow-lg shadow-crimson-600/30 hover:shadow-xl transition-all">
@@ -110,19 +106,6 @@ export default `<!DOCTYPE html>
       </div>
     </div>
   </header>
-
-  <!-- Privacy Banner -->
-  <section class="max-w-4xl mx-auto px-4 sm:px-6 -mt-4 relative z-10 w-full">
-    <div class="bg-white rounded-2xl border border-rose-100 shadow-sm p-4 sm:p-5 flex items-start sm:items-center gap-3.5">
-      <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-      </div>
-      <div class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-        <span class="font-bold text-slate-900 block text-sm">১০০% তথ্যের সুরক্ষা ও গোপনীয়তা নীতি</span>
-        রক্তদাতাদের ব্যক্তিগত ফোন নম্বর ও তথ্যের অপব্যবহার রোধে পাবলিক হোম পেইজে কোনো নম্বর প্রদর্শিত হয় না। সকল তথ্য সুরক্ষিতভাবে অ্যাডমিন প্যানেল এবং টেলিগ্রামের মাধ্যমে শুধুমাত্র জরুরি প্রয়োজনেই যাচাইকৃত স্বেচ্ছাসেবকদের কাছে সরবরাহ করা হয়।
-      </div>
-    </div>
-  </section>
 
   <!-- Blood Request Section -->
   <section id="request-section" class="max-w-4xl mx-auto px-4 sm:px-6 py-10 w-full">
