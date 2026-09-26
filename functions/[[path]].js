@@ -5,8 +5,11 @@ function json(data, status = 200, extraHeaders = {}) {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
       ...extraHeaders
     }
   });
@@ -339,7 +342,7 @@ export async function onRequest(context) {
           const body = await request.json();
           const {
             patient_name, blood_group, units, district, needed_by,
-            hospital_name, location, note, contact_phone, urgency,
+            hospital_name, location, contact_phone, urgency,
             requester_name, requester_blood_group, requester_age, requester_gender,
             requester_district, requester_area,
             captcha_token, captcha_answer, agreed_future_donation, agreed_data_save
@@ -385,7 +388,7 @@ export async function onRequest(context) {
             cleanPhone,
             urgency || "Emergency",
             needed_by.trim(),
-            note ? note.trim() : "",
+            body.note ? body.note.trim() : "",
             requester_name ? requester_name.trim() : "স্বজন",
             requester_blood_group || null
           ).run();
@@ -434,7 +437,7 @@ export async function onRequest(context) {
             location,
             contact_phone: cleanPhone,
             needed_by,
-            note,
+            note: body.note,
             requester_name,
             requester_blood_group
           }, matchedDonors));
@@ -457,7 +460,7 @@ export async function onRequest(context) {
       if (path === "/api/admin/setup" && method === "POST") {
         const adminCount = await env.DB.prepare("SELECT count(*) as count FROM admins").first();
         if (adminCount && adminCount.count > 0) {
-          return json({ error: "অ্যাডমিন ইতিমধ্যে কনফিগার করা আছে।" }, 403);
+          return json({ error: "অ্যাডমিন ইতিমধ্যে কনফিগার করা আছে। নতুন অ্যাডমিন তৈরি সম্পূর্ণ নিষিদ্ধ।" }, 403);
         }
 
         const { email, password, telegram_token, telegram_uids } = await request.json();
@@ -554,8 +557,8 @@ export async function onRequest(context) {
           const [totalDonors, activeDonors, totalRequests, pendingRequests] = await Promise.all([
             env.DB.prepare("SELECT count(*) as count FROM donors").first(),
             env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
-            env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
-            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending'").first()
+            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE (created_at >= datetime('now', '-10 days') OR created_at IS NULL)").first(),
+            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending' AND (created_at >= datetime('now', '-10 days') OR created_at IS NULL)").first()
           ]);
 
           return json({
@@ -604,24 +607,51 @@ export async function onRequest(context) {
 
         if (path === "/api/admin/requests" && method === "GET") {
           const status = url.searchParams.get("status") || "ALL";
-          let query = "SELECT * FROM blood_requests";
+          const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+          const limit = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)), 50);
+          const offset = (page - 1) * limit;
+
+          // Filter by last 10 days (or records with null timestamp)
+          let whereClause = "WHERE (created_at >= datetime('now', '-10 days') OR created_at IS NULL)";
           const params = [];
 
-          if (status && status !== "ALL") {
-            query += " WHERE status = ?";
+          const validStatuses = ["Pending", "Matched", "Fulfilled", "Closed"];
+          if (status && status !== "ALL" && validStatuses.includes(status)) {
+            whereClause += " AND status = ?";
             params.push(status);
           }
 
-          query += " ORDER BY id DESC LIMIT 100";
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          return json({ requests: results || [] });
+          // Count total in last 10 days
+          const countQuery = "SELECT count(*) as total FROM blood_requests " + whereClause;
+          const countStmt = params.length > 0 ? env.DB.prepare(countQuery).bind(...params) : env.DB.prepare(countQuery);
+          const totalRes = await countStmt.first();
+          const total = totalRes ? totalRes.total : 0;
+
+          // Paginated records (max 10 per page)
+          const dataQuery = "SELECT * FROM blood_requests " + whereClause + " ORDER BY id DESC LIMIT ? OFFSET ?";
+          const dataParams = [...params, limit, offset];
+          const dataStmt = env.DB.prepare(dataQuery).bind(...dataParams);
+          const { results } = await dataStmt.all();
+
+          return json({
+            requests: results || [],
+            total,
+            page,
+            limit,
+            total_pages: Math.ceil(total / limit) || 1,
+            days_limit: 10
+          });
         }
 
         if (path.match(/^\/api\/admin\/requests\/\d+\/status$/) && method === "PATCH") {
           const id = path.split("/")[4];
           const { status } = await request.json();
+          const validStatuses = ["Pending", "Matched", "Fulfilled", "Closed"];
+          if (!validStatuses.includes(status)) {
+            return json({ error: "অবৈধ স্ট্যাটাস।" }, 400);
+          }
           await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(status, id).run();
-          return json({ success: true });
+          return json({ success: true, status });
         }
 
         if (path.match(/^\/api\/admin\/requests\/\d+\/match-donors$/) && method === "GET") {
@@ -677,7 +707,8 @@ export async function onRequest(context) {
 
         if (path === "/api/admin/change-password" && method === "POST") {
           const { current_password, new_password } = await request.json();
-          if (!current_password || !new_password || new_password.length < 8) {
+
+          if (!new_password || new_password.length < 8) {
             return json({ error: "নতুন পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।" }, 400);
           }
 
