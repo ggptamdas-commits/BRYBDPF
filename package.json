@@ -1,0 +1,19 @@
+{
+  "name": "brybdpf",
+  "version": "1.0.0",
+  "description": "Smart Blood Donation & Millisecond Donor Search Platform powered by Cloudflare Workers & D1",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [
+    "blood-donation",
+    "cloudflare-workers",
+    "d1",
+    "telegram-bot"
+  ],
+  "author": "ggptamdas",
+  "license": "MIT"
+}
