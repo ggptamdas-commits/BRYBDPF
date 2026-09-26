@@ -234,36 +234,9 @@ export default {
       }
 
       if (path === "/api/donors/search" && method === "GET") {
-        const start = performance.now();
-        const bg = url.searchParams.get("blood_group") || "";
-        const district = url.searchParams.get("district") || "";
-        const limit = Math.min(parseInt(url.searchParams.get("limit") || "30", 10), 50);
-
-        let query = "SELECT id, name, blood_group, district, area, age, gender, last_donation_date, total_donations, is_available, phone FROM donors WHERE is_available = 1";
-        const params = [];
-
-        if (bg && bg !== "ALL") {
-          query += " AND blood_group = ?";
-          params.push(bg);
-        }
-
-        if (district && district.trim()) {
-          query += " AND district LIKE ?";
-          params.push(`%${district.trim()}%`);
-        }
-
-        query += " ORDER BY RANDOM() LIMIT ?";
-        params.push(limit);
-
-        const stmt = env.DB.prepare(query);
-        const { results } = await stmt.bind(...params).all();
-        const duration = (performance.now() - start).toFixed(2);
-
         return json({
-          donors: results || [],
-          count: (results || []).length,
-          duration_ms: duration
-        });
+          error: "নিরাপত্তা ও গোপনীয়তা সুরক্ষার্থে রক্তদাতাদের ব্যক্তিগত তথ্য পাবলিক সার্চে উন্মুক্ত নয়। রক্তের প্রয়োজনে ফর্ম পূরণ করে রিকোয়েস্ট পাঠান।"
+        }, 403);
       }
 
       if (path === "/api/donors/register" && method === "POST") {
@@ -336,7 +309,6 @@ export default {
 
         const cleanPhone = contact_phone.trim();
 
-        // 24-Hour Rate Limiting Check for same phone
         const recentReq = await env.DB.prepare(`
           SELECT id FROM blood_requests 
           WHERE contact_phone = ? 
@@ -349,7 +321,6 @@ export default {
           }, 429);
         }
 
-        // Auto-register requester as donor if not existing
         const existingDonor = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
         if (!existingDonor) {
           const dName = donor_name && donor_name.trim() ? donor_name.trim() : patient_name.trim() + " (রোগীর প্রতিনিধি)";
@@ -395,9 +366,7 @@ export default {
 
         return json({
           success: true,
-          message: "আপনার রক্তের রিকোয়েস্ট সফলভাবে গ্রহণ করা হয়েছে এবং নিকটস্থ ডোনারদের সাথে যোগাযোগ শুরু হয়েছে।",
-          matched_count: (matchedDonors || []).length,
-          matched_donors: matchedDonors || []
+          message: "আপনার রক্তের রিকোয়েস্ট সফলভাবে গ্রহণ করা হয়েছে। জরুরি ভিত্তিতে রক্তদাতাদের সাথে সমন্বয়ের জন্য অ্যাডমিন প্যানেল ও টেলিগ্রামে তাৎক্ষণিক নোটিফিকেশন পৌঁছেছে।"
         }, 201);
       }
 
