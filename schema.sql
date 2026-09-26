@@ -1,5 +1,4 @@
 -- BRYBDPF Database Schema (Cloudflare D1)
--- Smart Blood Donation & Millisecond Donor Search Platform
 
 CREATE TABLE IF NOT EXISTS donors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +38,9 @@ CREATE TABLE IF NOT EXISTS blood_requests (
   status TEXT DEFAULT 'Pending',
   agreed_future_donation INTEGER DEFAULT 1,
   agreed_data_save INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  requester_name TEXT,
+  requester_blood_group TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_req_phone ON blood_requests(contact_phone, created_at);
@@ -49,6 +50,22 @@ CREATE TABLE IF NOT EXISTS admin_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS admins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  salt TEXT NOT NULL,
+  role TEXT DEFAULT 'admin',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS login_rate_limit (
+  ip_key TEXT PRIMARY KEY,
+  attempt_count INTEGER DEFAULT 0,
+  last_attempt TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS login_attempts (
