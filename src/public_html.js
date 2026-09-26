@@ -3,7 +3,10 @@ export default `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRYBDPF — নিরাপদ ও দ্রুত ব্লাড ডোনেশন নেটওয়ার্ক</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>BRYBDPF — নিরাপদ ও দ্রুত ব্লাড নেটওয়ার্ক</title>
   <meta name="description" content="নিরাপদ রক্তদাতা ব্যবস্থাপনা ও জরুরি রক্ত সহায়তা প্ল্যাটফর্ম। সুরক্ষিত অ্যাডমিন প্যানেল ও টেলিগ্রাম অ্যালার্ট সিস্টেম।">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,7 +38,7 @@ export default `<!DOCTYPE html>
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-crimson-100 selection:text-crimson-800">
-  <!-- Navbar (Header) -->
+  <!-- Navbar -->
   <nav class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-rose-100 shadow-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
@@ -67,7 +70,7 @@ export default `<!DOCTYPE html>
     <div class="max-w-4xl mx-auto px-4 sm:px-6 text-center">
       <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-crimson-100/80 border border-crimson-200 text-crimson-800 text-xs sm:text-sm font-semibold mb-5">
         <span class="flex h-2 w-2 relative"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-crimson-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-crimson-600"></span></span>
-        নিরাপদ রক্তদাতা ব্যবস্থাপনা ও সমন্বয় নেটওয়ার্ক
+        নিরাপদ রক্তদাতা ব্যবস্থাপনা ও জরুরি রক্ত সহায়তা নেটওয়ার্ক
       </div>
       <h1 class="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight sm:leading-none">
         জরুরি রক্তের প্রয়োজনে পাশে আছে <span class="text-transparent bg-clip-text bg-gradient-to-r from-crimson-600 to-rose-500">BRYBDPF প্ল্যাটফর্ম</span>
@@ -86,7 +89,7 @@ export default `<!DOCTYPE html>
         </button>
       </div>
 
-      <!-- Live Counters (Privacy-Safe Aggregates) -->
+      <!-- Live Counters -->
       <div class="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 max-w-3xl mx-auto">
         <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
           <div class="text-2xl sm:text-3xl font-bold text-crimson-600" id="stat-total-donors">...</div>
@@ -108,7 +111,7 @@ export default `<!DOCTYPE html>
     </div>
   </header>
 
-  <!-- Privacy & Security Assurance Banner -->
+  <!-- Privacy Banner -->
   <section class="max-w-4xl mx-auto px-4 sm:px-6 -mt-4 relative z-10 w-full">
     <div class="bg-white rounded-2xl border border-rose-100 shadow-sm p-4 sm:p-5 flex items-start sm:items-center gap-3.5">
       <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
@@ -131,7 +134,7 @@ export default `<!DOCTYPE html>
           </div>
           <div>
             <h2 class="text-xl sm:text-2xl font-bold tracking-tight">জরুরি রক্তের রিকোয়েস্ট পাঠান</h2>
-            <p class="text-rose-100 text-xs sm:text-sm mt-0.5">তথ্য পূরণ করে জমা দিলেই অ্যাডমিন কন্ট্রোল প্যানেল ও টেলিগ্রামে তাৎক্ষণিক অ্যালার্ট পৌঁছাবে।</p>
+            <p class="text-rose-100 text-xs sm:text-sm mt-0.5">রোগীর রক্তের প্রয়োজন ও আবেদনকারীর তথ্য দিন — অ্যাডমিন ও টেলিগ্রামে তাৎক্ষণিক অ্যালার্ট যাবে।</p>
           </div>
         </div>
       </div>
@@ -139,99 +142,128 @@ export default `<!DOCTYPE html>
       <form id="blood-request-form" onsubmit="submitBloodRequest(event)" class="p-6 sm:p-8 space-y-6">
         <div id="request-alert-box" class="hidden p-4 rounded-xl text-sm font-medium"></div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">রোগীর পুরো নাম *</label>
-            <input type="text" id="req-patient-name" required placeholder="উদাঃ শফিকুল ইসলাম" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
+        <!-- Section 1: Patient Information -->
+        <div class="p-5 rounded-2xl bg-rose-50/40 border border-rose-100 space-y-4">
+          <div class="flex items-center gap-2 pb-2 border-b border-rose-200/60">
+            <span class="w-6 h-6 rounded-full bg-crimson-600 text-white text-xs font-bold flex items-center justify-center">১</span>
+            <h3 class="text-sm font-bold text-slate-900">রোগীর তথ্য ও রক্তের চাহিদা</h3>
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">প্রয়োজনীয় রক্তের গ্রুপ *</label>
-            <select id="req-blood-group" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm font-semibold transition">
-              <option value="">গ্রুপ নির্বাচন করুন</option>
-              <option value="A+">A+</option><option value="A-">A-</option>
-              <option value="B+">B+</option><option value="B-">B-</option>
-              <option value="AB+">AB+</option><option value="AB-">AB-</option>
-              <option value="O+">O+</option><option value="O-">O-</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">রক্তের পরিমাণ (ব্যাগ) *</label>
-            <input type="number" id="req-units" min="1" max="10" value="1" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">জেলা *</label>
-            <input type="text" id="req-district" required placeholder="উদাঃ ঢাকা" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">রক্তের প্রয়োজন কখন? *</label>
-            <input type="text" id="req-needed-by" required placeholder="উদাঃ আজ বিকাল ৪টায় / জরুরি" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">হাসপাতালের নাম ও ওয়ার্ড নম্বর *</label>
-            <input type="text" id="req-hospital" required placeholder="উদাঃ ঢাকা মেডিকেল কলেজ হাসপাতাল" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">হাসপাতালের এলাকা / লোকেশন *</label>
-            <input type="text" id="req-location" required placeholder="উদাঃ চাঁনখারপুল, ঢাকা" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
-          </div>
-        </div>
-
-        <div class="bg-rose-50/50 p-4 sm:p-5 rounded-2xl border border-rose-100 space-y-4">
-          <div class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-crimson-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-            <h3 class="text-sm font-bold text-slate-900">যোগাযোগের মোবাইল নম্বর ও ডোনার প্রোফাইল</h3>
-          </div>
-          <p class="text-xs text-slate-600 leading-relaxed">* নীতিমালা অনুযায়ী রিকোয়েস্টকারীকেও ভবিষ্যৎ ডোনার হিসেবে তথ্য সংরক্ষণ করতে হবে।</p>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">মোবাইল নম্বর (১১ ডিজিট) *</label>
-              <input type="tel" id="req-phone" required placeholder="01XXXXXXXXX" pattern="[0-9]{11}" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm font-mono transition">
-              <span class="text-[11px] text-slate-400 mt-0.5 block">বিগত ২৪ ঘণ্টায় একই নম্বর থেকে একাধিক রিকোয়েস্ট গ্রহণযোগ্য নয়।</span>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">রোগীর পুরো নাম *</label>
+              <input type="text" id="req-patient-name" required placeholder="উদাঃ মোঃ শফিকুল ইসলাম" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার নাম (ডোনার/প্রতিনিধি) *</label>
-              <input type="text" id="req-donor-name" required placeholder="আপনার নাম লিখুন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition">
+              <label class="block text-xs font-semibold text-slate-700 mb-1">রোগীর প্রয়োজনীয় রক্তের গ্রুপ *</label>
+              <select id="req-patient-blood-group" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm font-semibold bg-white transition">
+                <option value="">গ্রুপ নির্বাচন করুন</option>
+                <option value="A+">A+</option><option value="A-">A-</option>
+                <option value="B+">B+</option><option value="B-">B-</option>
+                <option value="AB+">AB+</option><option value="AB-">AB-</option>
+                <option value="O+">O+</option><option value="O-">O-</option>
+              </select>
             </div>
           </div>
 
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">বয়স *</label>
-              <input type="number" id="req-donor-age" min="18" max="65" value="24" required class="w-full h-10 px-2.5 rounded-lg border border-slate-200 text-xs">
+              <label class="block text-xs font-semibold text-slate-700 mb-1">রক্তের পরিমাণ (ব্যাগ) *</label>
+              <input type="number" id="req-units" min="1" max="10" value="1" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">লিঙ্গ *</label>
-              <select id="req-donor-gender" class="w-full h-10 px-2.5 rounded-lg border border-slate-200 text-xs">
-                <option value="Male">পুরুষ</option><option value="Female">নারী</option><option value="Other">অন্যান্য</option>
-              </select>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">জেলা (হাসপাতালের জেলা) *</label>
+              <input type="text" id="req-district" required placeholder="উদাঃ ঢাকা" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার এলাকা</label>
-              <input type="text" id="req-donor-area" placeholder="উপজেলা / এলাকা" class="w-full h-10 px-2.5 rounded-lg border border-slate-200 text-xs">
+              <label class="block text-xs font-semibold text-slate-700 mb-1">রক্ত কখন প্রয়োজন? *</label>
+              <input type="text" id="req-needed-by" required placeholder="উদাঃ আজ বিকাল ৪টায় / জরুরি" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
             </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">হাসপাতালের নাম ও ওয়ার্ড/কেবিন নম্বর *</label>
+              <input type="text" id="req-hospital" required placeholder="উদাঃ ঢাকা মেডিকেল কলেজ হাসপাতাল" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">হাসপাতালের ঠিকানা / এলাকা *</label>
+              <input type="text" id="req-location" required placeholder="উদাঃ চাঁনখারপুল, ঢাকা" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">রোগীর সমস্যা / বিশেষ নোট (ঐচ্ছিক)</label>
+            <textarea id="req-note" rows="2" placeholder="রোগীর অপারেশনের বিবরণ বা বিশেষ নির্দেশনা..." class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition"></textarea>
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">অতিরিক্ত তথ্য (ঐচ্ছিক)</label>
-          <textarea id="req-note" rows="2" placeholder="রোগীর অপারেশনের বিবরণ বা বিশেষ নির্দেশনা..." class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm transition"></textarea>
+        <!-- Section 2: Applicant / Representative Information (Future Donor Registration) -->
+        <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+          <div class="flex items-center gap-2 pb-2 border-b border-slate-200">
+            <span class="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center">২</span>
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">আবেদনকারী / রোগীর প্রতিনিধির তথ্য</h3>
+              <p class="text-[11px] text-slate-500">রোগীর প্রতিনিধি হিসেবে আপনার তথ্য ডোনার তালিকায় সংরক্ষিত হবে (রোগীকে ডোনার করা হবে না)।</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার নাম (রোগীর স্বজন / প্রতিনিধি) *</label>
+              <input type="text" id="req-applicant-name" required placeholder="আপনার পুরো নাম লিখুন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার মোবাইল নম্বর (১১ ডিজিট) *</label>
+              <input type="tel" id="req-phone" required placeholder="01XXXXXXXXX" pattern="[0-9]{11}" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm font-mono bg-white transition">
+              <span class="text-[11px] text-slate-400 mt-0.5 block">বিগত ২৪ ঘণ্টায় একই নম্বর থেকে একাধিক রিকোয়েস্ট পাঠানো নিষেধ।</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-crimson-700 mb-1">আপনার নিজস্ব রক্তের গ্রুপ *</label>
+              <select id="req-applicant-blood-group" required class="w-full h-10 px-2.5 rounded-lg border-2 border-crimson-200 focus:ring-2 focus:ring-crimson-500 outline-none text-xs font-bold bg-white transition">
+                <option value="">আপনার রক্তের গ্রুপ</option>
+                <option value="A+">A+</option><option value="A-">A-</option>
+                <option value="B+">B+</option><option value="B-">B-</option>
+                <option value="AB+">AB+</option><option value="AB-">AB-</option>
+                <option value="O+">O+</option><option value="O-">O-</option>
+              </select>
+              <span class="text-[10px] text-slate-500 block mt-0.5">রোগীর রক্তের গ্রুপ নয়, আপনার নিজের গ্রুপ</span>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার বয়স *</label>
+              <input type="number" id="req-applicant-age" min="18" max="65" value="26" required class="w-full h-10 px-2.5 rounded-lg border border-slate-200 text-xs bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার লিঙ্গ *</label>
+              <select id="req-applicant-gender" class="w-full h-10 px-2.5 rounded-lg border border-slate-200 text-xs bg-white">
+                <option value="Male">পুরুষ</option><option value="Female">নারী</option><option value="Other">অন্যান্য</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার জেলা *</label>
+              <input type="text" id="req-applicant-district" required placeholder="উদাঃ ঢাকা" class="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">আপনার উপজেলা / এলাকা *</label>
+              <input type="text" id="req-applicant-area" required placeholder="উদাঃ মিরপুর / ধানমন্ডি" class="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs bg-white">
+            </div>
+          </div>
         </div>
 
         <div class="space-y-3 pt-2">
           <label class="flex items-start gap-3 cursor-pointer group">
             <input type="checkbox" id="req-agree-1" required class="mt-1 w-4 h-4 rounded text-crimson-600 focus:ring-crimson-500 border-slate-300">
-            <span class="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900">১. ভবিষ্যতে কারো রক্ত লাগলে রক্ত দেয়ার চেষ্টা করবো।</span>
+            <span class="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900">১. ভবিষ্যতে কারো রক্ত লাগলে আমি রক্ত দেয়ার চেষ্টা করবো।</span>
           </label>
           <label class="flex items-start gap-3 cursor-pointer group">
             <input type="checkbox" id="req-agree-2" required class="mt-1 w-4 h-4 rounded text-crimson-600 focus:ring-crimson-500 border-slate-300">
-            <span class="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900">২. আমার সকল তথ্য ডুনার লিষ্টে সেইভ রাখলে আমার কোন সমস্যা নেই।</span>
+            <span class="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900">২. আবেদনকারী হিসেবে আমার নিজের তথ্য রক্তদাতা তালিকায় সংরক্ষণ করতে সম্মতি দিচ্ছি।</span>
           </label>
         </div>
 
@@ -411,19 +443,25 @@ export default `<!DOCTYPE html>
       submitBtn.innerHTML = 'পাঠানো হচ্ছে...';
 
       const payload = {
+        // Patient details
         patient_name: document.getElementById('req-patient-name').value,
-        blood_group: document.getElementById('req-blood-group').value,
+        blood_group: document.getElementById('req-patient-blood-group').value,
         units: parseInt(document.getElementById('req-units').value, 10),
         district: document.getElementById('req-district').value,
         needed_by: document.getElementById('req-needed-by').value,
         hospital_name: document.getElementById('req-hospital').value,
         location: document.getElementById('req-location').value,
-        contact_phone: document.getElementById('req-phone').value,
-        donor_name: document.getElementById('req-donor-name').value,
-        donor_age: parseInt(document.getElementById('req-donor-age').value, 10),
-        donor_gender: document.getElementById('req-donor-gender').value,
-        donor_area: document.getElementById('req-donor-area').value,
         note: document.getElementById('req-note').value,
+        
+        // Requester/Representative details (who will be registered as donor)
+        requester_name: document.getElementById('req-applicant-name').value,
+        contact_phone: document.getElementById('req-phone').value,
+        requester_blood_group: document.getElementById('req-applicant-blood-group').value,
+        requester_age: parseInt(document.getElementById('req-applicant-age').value, 10),
+        requester_gender: document.getElementById('req-applicant-gender').value,
+        requester_district: document.getElementById('req-applicant-district').value,
+        requester_area: document.getElementById('req-applicant-area').value,
+        
         agreed_future_donation: agree1,
         agreed_data_save: agree2,
         captcha_token: document.getElementById('captcha-token').value,
@@ -449,7 +487,7 @@ export default `<!DOCTYPE html>
         }
 
         alertBox.className = 'p-4 rounded-xl text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 block';
-        alertBox.innerHTML = '<strong>সফল!</strong> ' + (data.message || 'আপনার রক্তের রিকোয়েস্ট সফলভাবে গ্রহণ করা হয়েছে।') + '<br><span class="text-xs text-emerald-700 mt-1 block">আমাদের অ্যাডমিন প্যানেল ও টেলিগ্রাম অ্যালার্টে রিকোয়েস্টটি পাঠানো হয়েছে। দ্রুত ডোনার সমন্বয় করা হচ্ছে।</span>';
+        alertBox.innerHTML = '<strong>সফল!</strong> ' + (data.message || 'আপনার রক্তের রিকোয়েস্ট সফলভাবে গ্রহণ করা হয়েছে।') + '<br><span class="text-xs text-emerald-700 mt-1 block">আমাদের অ্যাডমিন প্যানেল ও টেলিগ্রাম অ্যালার্টে রিকোয়েস্টটি পাঠানো হয়েছে। দ্রুত রক্তদাতা সমন্বয় করা হচ্ছে।</span>';
         document.getElementById('blood-request-form').reset();
         loadCaptcha();
         loadStats();
