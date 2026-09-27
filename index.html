@@ -653,19 +653,27 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        
+        let data = {};
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (parseErr) {
+          throw new Error(text || `সার্ভার রেসপন্স প্রদানে ব্যর্থ হয়েছে (কোড: ${res.status})`);
+        }
+
         btn.disabled = false;
         btn.innerHTML = 'জরুরি রিকোয়েস্ট সাবমিট করুন';
 
         if (!res.ok) {
           alertBox.className = 'p-4 rounded-xl text-sm font-semibold bg-rose-50 text-rose-800 block';
-          alertBox.textContent = data.error || 'রিকোয়েস্ট ব্যর্থ হয়েছে';
+          alertBox.textContent = data.error || 'রিকোয়েস্ট প্রক্রিয়া সম্পন্ন করা যায়নি।';
           loadCaptcha();
           return;
         }
 
         alertBox.className = 'p-4 rounded-xl text-sm font-semibold bg-emerald-50 text-emerald-800 block';
-        alertBox.textContent = data.message || 'রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে! রক্তদাতাদের নিরাপত্তা রক্ষায় সরাসরি উন্মুক্ত সার্চ নেই, তবে আমাদের সিস্টেম নিকটবর্তী ডোনারদের দ্রুত অবহিত করবে।';
+        alertBox.textContent = data.message || 'আপনার জরুরি রক্তের রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে! রক্তদাতাদের নিরাপত্তা রক্ষায় পাবলিক সার্চ বন্ধ রেখে সিস্টেম স্বয়ংক্রিয়ভাবে নিকটবর্তী ডোনারদের অবহিত করবে।';
         document.getElementById('blood-request-form').reset();
         loadCaptcha();
         loadStats();
@@ -710,7 +718,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        let data = {};
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (parseErr) {
+          throw new Error(text || `সার্ভার সমস্যা (কোড: ${res.status})`);
+        }
         btn.disabled = false;
         if (!res.ok) {
           alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 block';
