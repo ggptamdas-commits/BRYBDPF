@@ -130,15 +130,17 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     let donorText = "";
     const inlineButtons = [];
 
-    // 1. WhatsApp message for the REQUESTER (containing list of matched donors)
+    // 1. WhatsApp message for the REQUESTER (containing list of matched donors, tagged by proximity tier)
     let shareToRequester = `🩸 *রক্তদাতাদের তালিকা — BRYBDPF* 🩸\n` +
       `───────────────────────\n` +
       `আসসালামু আলাইকুম,\n` +
-      `রোগীর জরুরি প্রয়োজনে *${requestData.blood_group}* গ্রুপের রক্তদাতাদের তালিকা নিচে দেওয়া হলো:\n\n`;
+      `রোগীর জরুরি প্রয়োজনে *${requestData.blood_group}* গ্রুপের রক্তদাতাদের তালিকা (আশেপাশের থানা ও জেলা ভিত্তিতে অগ্রাধিকার অনুযায়ী):\n\n`;
     if (matchedDonors && matchedDonors.length > 0) {
-      shareToRequester += matchedDonors.slice(0, 10).map((d, i) =>
-        `${i + 1}. *${d.name}* (${d.district})\n   📞 কল করুন: *${d.phone}*`
-      ).join("\n\n");
+      shareToRequester += matchedDonors.slice(0, 10).map((d, i) => {
+        const tierTag = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [বিভাগীয় জেলা]");
+        const loc = (d.area ? d.area + ', ' : '') + (d.district || 'রংপুর');
+        return `${i + 1}. *${d.name}* (${loc}) ${tierTag}\n   📞 কল করুন: *${d.phone}*`;
+      }).join("\n\n");
       shareToRequester += "\n\n───────────────────────\n" +
         "💡 *পরামর্শ:* রক্তদাতাদের সাথে দ্রুত সরাসরি ফোনে কথা বলে সময় ও স্থান নিশ্চিত করুন।\n" +
         "🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।";
@@ -157,14 +159,16 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
         const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
         const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
         
+        const tierTag = d.proximity_tier === 1 ? "🎯 [আপনার নিজস্ব থানায় রোগী]" : "📍 [আপনার জেলায় রোগী]";
         const promptForDonor = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
           `───────────────────────\n` +
           `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
-          `এক মুমূর্ষু রোগীর জীবন রক্ষায় আপনার গ্রুপের (*${requestData.blood_group}*) রক্ত জরুরি প্রয়োজন।\n\n` +
+          `এক মুমূর্ষু রোগীর জীবন রক্ষায় জরুরি ভিত্তিতে আপনার গ্রুপের (*${requestData.blood_group}*) রক্ত প্রয়োজন। ${tierTag}\n\n` +
           `📋 *রোগী ও হাসপাতালের তথ্য:*\n` +
           `• *রক্তের গ্রুপ:* *${requestData.blood_group}* (${requestData.units || 1} ব্যাগ)\n` +
           `• *রোগীর নাম:* ${requestData.patient_name}\n` +
-          `• *হাসপাতাল:* ${requestData.hospital_name}, ${requestData.district}\n` +
+          `• *হাসপাতাল:* ${requestData.hospital_name}\n` +
+          `• *স্থান/থানা:* ${requestData.thana ? requestData.thana + ', ' : ''}${requestData.district}\n` +
           `• *ঠিকানা/ওয়ার্ড:* ${requestData.location}\n` +
           `• *কখন লাগবে:* *${requestData.needed_by}*\n\n` +
           `🤝 *যোগাযোগের তথ্য:*\n` +
@@ -182,7 +186,8 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
           inlineButtons.push([{ text: `💬 ${i + 1}. ${d.name} কে রোগীর তথ্য পাঠান`, url: donorWaUrl }]);
         }
 
-        return `${i + 1}. <b>${d.name}</b> (${d.blood_group}) - ${d.district}, ${d.area}\n` +
+        const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
+        return `${i + 1}. <b>${d.name}</b> (${d.blood_group}) - ${d.area ? d.area + ', ' : ''}${d.district} ${tierBadge}\n` +
           `   📞 <a href="tel:${d.phone}">${d.phone}</a>\n` +
           `   👉 <a href="${donorWaUrl}">💬 WhatsApp-এ এই ডোনারকে রোগীর তথ্য পাঠান</a>`;
       }).join("\n\n");
@@ -194,15 +199,16 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `🩸 <b>রোগীর প্রয়োজনীয় রক্ত:</b> <code>${requestData.blood_group}</code> (${requestData.units || 1} ব্যাগ)\n` +
       `👤 <b>রোগীর নাম:</b> ${requestData.patient_name}\n` +
-      `🏥 <b>হাসপাতাল:</b> ${requestData.hospital_name}, ${requestData.district}\n` +
-      `📍 <b>ঠিকানা:</b> ${requestData.location}\n` +
+      `🏥 <b>হাসপাতাল:</b> ${requestData.hospital_name}\n` +
+      `📍 <b>থানা ও জেলা:</b> ${requestData.thana ? requestData.thana + ', ' : ''}${requestData.district}\n` +
+      `📍 <b>ঠিকানা/ওয়ার্ড:</b> ${requestData.location}\n` +
       `⏰ <b>প্রয়োজনের সময়:</b> ${requestData.needed_by}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `🤝 <b>আবেদনকারী:</b> ${requestData.requester_name || "স্বজন"}\n` +
       `📞 <b>যোগাযোগের নম্বর:</b> <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>\n` +
       (requestData.note ? `📝 <b>নোট:</b> ${requestData.note}\n` : "") +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📋 <b>রোগীর জন্য সম্ভাব্য ডোনার তালিকা (${requestData.blood_group}):</b>\n\n` +
+      `📋 <b>রোগীর নিকটবর্তী ডোনারদের তালিকা (অগ্রাধিকার ভিত্তিতে):</b>\n\n` +
       donorText + `\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `⚡ <b>এক ক্লিকে আবেদনকারীকে ডোনার লিস্ট পাঠাতে:</b>\n` +
@@ -469,7 +475,7 @@ async function handleTelegramUpdate(update, env, ctx) {
       const avail = availRes?.count || 0;
       const onHold = total - avail;
 
-      const text = `📊 <b>BRYBDPF সামগ্রিক পরিসংখ্যান ও ডোনার ডাটা</b>\n` +
+      const text = `📊 <b>BRYBDPF রংপুর বিভাগীয় পরিসংখ্যান ও ডোনার ডাটা</b>\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `👥 <b>মোট নিবন্ধিত ডোনার:</b> ${total} জন\n` +
         `✅ <b>রক্তদানে প্রস্তুত:</b> ${avail} জন\n` +
@@ -526,8 +532,9 @@ async function handleTelegramUpdate(update, env, ctx) {
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `🩸 <b>গ্রুপ:</b> <code>${r.blood_group}</code> (${r.units || 1} ব্যাগ)\n` +
         `👤 <b>রোগী:</b> ${r.patient_name}\n` +
-        `🏥 <b>হাসপাতাল:</b> ${r.hospital_name}, ${r.district}\n` +
-        `📍 <b>ঠিকানা:</b> ${r.location}\n` +
+        `🏥 <b>হাসপাতাল:</b> ${r.hospital_name}\n` +
+        `📍 <b>স্থান/থানা:</b> ${r.thana ? r.thana + ', ' : ''}${r.district}\n` +
+        `📍 <b>ঠিকানা/ওয়ার্ড:</b> ${r.location}\n` +
         `📞 <b>আবেদনকারী:</b> ${r.requester_name || "স্বজন"} (<a href="tel:${r.contact_phone}">${r.contact_phone}</a>)\n` +
         `⏰ <b>প্রয়োজন:</b> ${r.needed_by}\n` +
         (r.note ? `📝 <b>নোট:</b> ${r.note}\n` : "") +
@@ -535,7 +542,7 @@ async function handleTelegramUpdate(update, env, ctx) {
         `নিচের বাটন চেপে ডোনার তালিকা বের করুন অথবা স্ট্যাটাস পরিবর্তন করুন:`;
 
       const kb = [
-        [{ text: `🔍 ${r.blood_group} ডোনার ও WhatsApp লিংক`, callback_data: `cb:req_donors:${r.id}` }],
+        [{ text: `🔍 ${r.blood_group} নিকটবর্তী ডোনার ও WhatsApp লিংক`, callback_data: `cb:req_donors:${r.id}` }],
         [
           { text: "🤝 Matched", callback_data: `cb:req_status:${r.id}:Matched` },
           { text: "✅ Fulfilled", callback_data: `cb:req_status:${r.id}:Fulfilled` },
@@ -589,7 +596,7 @@ async function handleTelegramUpdate(update, env, ctx) {
       await tgAnswerCallback(token, cq.id);
 
       if (data === "cb:menu") {
-        const text = "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল</b> 🩸\n━━━━━━━━━━━━━━━━━━━━\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:";
+        const text = "🩸 <b>BRYBDPF রংপুর বিভাগীয় অ্যাডমিন কন্ট্রোল</b> 🩸\n━━━━━━━━━━━━━━━━━━━━\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:";
         await tgSendOrEdit(token, chatId, messageId, text, getMainAdminKeyboard(), true);
         return;
       }
@@ -620,7 +627,7 @@ async function handleTelegramUpdate(update, env, ctx) {
           results.forEach((d, i) => {
             const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
             const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-            donorText += `<b>${i + 1}. ${d.name}</b> (${d.district}, ${d.area})\n` +
+            donorText += `<b>${i + 1}. ${d.name}</b> (${d.area ? d.area + ', ' : ''}${d.district})\n` +
               `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার\n\n`;
             
             const grpWaMsg = `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
@@ -671,12 +678,24 @@ async function handleTelegramUpdate(update, env, ctx) {
           return;
         }
 
-        const { results: donors } = await env.DB.prepare(
-          "SELECT name, blood_group, district, area, phone FROM donors WHERE blood_group = ? AND is_available = 1 ORDER BY (CASE WHEN district LIKE ? THEN 0 ELSE 1 END), id DESC LIMIT 6"
-        ).bind(req.blood_group, `%${req.district}%`).all();
+        const reqThana = req.thana || "";
+        const reqDist = (req.district || "রংপুর").trim();
+
+        const { results: donors } = await env.DB.prepare(`
+          SELECT name, blood_group, district, area, phone,
+            (CASE 
+              WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
+              WHEN district = ? THEN 2
+              ELSE 3
+            END) as proximity_tier
+          FROM donors 
+          WHERE blood_group = ? AND is_available = 1
+          ORDER BY proximity_tier ASC, id DESC LIMIT 8
+        `).bind(reqDist, `%${reqThana}%`, reqThana, reqDist, req.blood_group).all();
 
         let text = `📋 <b>রিকোয়েস্ট #${req.id} এর জন্য প্রস্তুত ডোনার তালিকা:</b>\n` +
-          `রোগী: ${req.patient_name} (${req.blood_group}) - ${req.hospital_name}\n━━━━━━━━━━━━━━━━━━━━\n`;
+          `রোগী: ${req.patient_name} (${req.blood_group}) - ${req.hospital_name}\n` +
+          `স্থান: ${req.thana ? req.thana + ', ' : ''}${req.district}\n━━━━━━━━━━━━━━━━━━━━\n`;
 
         const kb = [];
 
@@ -686,8 +705,9 @@ async function handleTelegramUpdate(update, env, ctx) {
           donors.forEach((d, i) => {
             const cleanPhone = d.phone.replace(/[^0-9]/g, "");
             const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
+            const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
             
-            text += `<b>${i + 1}. ${d.name}</b> (${d.district}, ${d.area}) - <code>${d.phone}</code>\n`;
+            text += `<b>${i + 1}. ${d.name}</b> (${d.area ? d.area + ', ' : ''}${d.district}) ${tierBadge}\n   📞 <code>${d.phone}</code>\n`;
 
             const prefilledText = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
               `───────────────────────\n` +
@@ -695,14 +715,15 @@ async function handleTelegramUpdate(update, env, ctx) {
               `জরুরি প্রয়োজনে *${req.blood_group}* (${req.units || 1} ব্যাগ) রক্তের প্রয়োজন।\n\n` +
               `📋 *রোগীর বিবরণ:*\n` +
               `• *রোগী:* ${req.patient_name}\n` +
-              `• *হাসপাতাল:* ${req.hospital_name}, ${req.district}\n` +
-              `• *ঠিকানা:* ${req.location}\n` +
+              `• *হাসপাতাল:* ${req.hospital_name}\n` +
+              `• *স্থান/থানা:* ${req.thana ? req.thana + ', ' : ''}${req.district}\n` +
+              `• *ঠিকানা/ওয়ার্ড:* ${req.location}\n` +
               `• *কখন লাগবে:* *${req.needed_by}*\n` +
               `• *আবেদনকারী:* ${req.requester_name || "স্বজন"} (*${req.contact_phone}*)\n` +
               (req.note ? `• *নোট:* ${req.note}\n` : "") +
               `───────────────────────\n` +
               `🤲 আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n\n` +
-              `🌐 *BRYBDPF ব্লাড নেটওয়ার্ক*\n` +
+              `🌐 *BRYBDPF রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক*\n` +
               `🔗 https://brybdpf.pages.dev`;
             kb.push([
               { text: `💬 WhatsApp: ${d.name}`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledText)}` }
@@ -1033,6 +1054,7 @@ export async function onRequest(context) {
         const start = performance.now();
         const bg = url.searchParams.get("blood_group") || "";
         const district = url.searchParams.get("district") || "";
+        const area = url.searchParams.get("area") || "";
         const limit = Math.min(parseInt(url.searchParams.get("limit") || "30", 10), 50);
 
         let query = "SELECT id, name, blood_group, district, area, age, gender, last_donation_date, total_donations, is_available, phone FROM donors WHERE is_available = 1";
@@ -1043,9 +1065,14 @@ export async function onRequest(context) {
           params.push(bg);
         }
 
-        if (district && district.trim()) {
-          query += " AND district LIKE ?";
-          params.push(`%${district.trim()}%`);
+        if (district && district.trim() && district !== "ALL") {
+          query += " AND district = ?";
+          params.push(district.trim());
+        }
+
+        if (area && area.trim() && area !== "ALL") {
+          query += " AND area LIKE ?";
+          params.push(`%${area.trim()}%`);
         }
 
         query += " ORDER BY RANDOM() LIMIT ?";
@@ -1122,7 +1149,7 @@ export async function onRequest(context) {
         try {
           const body = await request.json();
           const {
-            patient_name, blood_group, units, district, needed_by,
+            patient_name, blood_group, units, district, thana, needed_by,
             hospital_name, location, contact_phone, urgency,
             requester_name, requester_blood_group, requester_age, requester_gender,
             requester_district, requester_area,
@@ -1153,17 +1180,18 @@ export async function onRequest(context) {
 
           const insertReqStmt = env.DB.prepare(`
             INSERT INTO blood_requests (
-              patient_name, blood_group, units, district, hospital_name,
+              patient_name, blood_group, units, district, thana, hospital_name,
               location, contact_phone, urgency, needed_by, note, requester_name,
               status, requester_blood_group
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
           `);
 
           const reqInsertRes = await insertReqStmt.bind(
             patient_name.trim(),
             blood_group,
             parseInt(units, 10),
-            district.trim(),
+            (district || "রংপুর").trim(),
+            thana ? thana.trim() : null,
             hospital_name.trim(),
             location.trim(),
             cleanPhone,
@@ -1176,8 +1204,8 @@ export async function onRequest(context) {
 
           const donorBloodGroupToRegister = requester_blood_group || blood_group;
           const donorNameToRegister = requester_name ? requester_name.trim() : patient_name.trim();
-          const donorDistrictToRegister = requester_district ? requester_district.trim() : district.trim();
-          const donorAreaToRegister = requester_area ? requester_area.trim() : location.trim();
+          const donorDistrictToRegister = requester_district ? requester_district.trim() : (district || "রংপুর").trim();
+          const donorAreaToRegister = requester_area ? requester_area.trim() : (thana || location).trim();
           const donorAgeToRegister = requester_age ? parseInt(requester_age, 10) : 25;
           const donorGenderToRegister = requester_gender || "Male";
 
@@ -1201,9 +1229,27 @@ export async function onRequest(context) {
 
           let matchedDonors = [];
           try {
-            const { results } = await env.DB.prepare(
-              "SELECT name, blood_group, district, area, phone FROM donors WHERE blood_group = ? AND is_available = 1 AND phone != ? ORDER BY (CASE WHEN district LIKE ? THEN 0 ELSE 1 END), RANDOM() LIMIT 20"
-            ).bind(blood_group, cleanPhone, `%${district.trim()}%`).all();
+            const cleanDist = (district || "রংপুর").trim();
+            const cleanThana = (thana || "").trim();
+
+            const { results } = await env.DB.prepare(`
+              SELECT name, blood_group, district, area, phone,
+                (CASE 
+                  WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
+                  WHEN district = ? THEN 2
+                  ELSE 3
+                END) as proximity_tier
+              FROM donors 
+              WHERE blood_group = ? AND is_available = 1 AND phone != ?
+              ORDER BY 
+                proximity_tier ASC,
+                RANDOM()
+              LIMIT 20
+            `).bind(
+              cleanDist, `%${cleanThana}%`, cleanThana,
+              cleanDist,
+              blood_group, cleanPhone
+            ).all();
             matchedDonors = results || [];
           } catch (e) {
             console.error("Donor match query error:", e);
@@ -1214,6 +1260,7 @@ export async function onRequest(context) {
             blood_group,
             units,
             district,
+            thana,
             hospital_name,
             location,
             contact_phone: cleanPhone,
@@ -1225,7 +1272,7 @@ export async function onRequest(context) {
 
           return json({
             success: true,
-            message: "আপনার রক্তের রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে! উপযুক্ত ডোনারদের সাথে যোগাযোগ এবং টেলিগ্রাম অ্যালার্ট প্রক্রিয়া শুরু হয়েছে।",
+            message: "আপনার রক্তের রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে! নিকটবর্তী ও প্রস্তুত ডোনারদের সাথে সমন্বয় এবং টেলিগ্রাম অ্যালার্ট প্রক্রিয়া শুরু হয়েছে।",
             request_id: reqInsertRes.meta?.last_row_id || null
           });
         } catch (err) {
@@ -1472,15 +1519,27 @@ export async function onRequest(context) {
           const req = await env.DB.prepare("SELECT * FROM blood_requests WHERE id = ?").bind(id).first();
           if (!req) return json({ error: "রিকোয়েস্ট পাওয়া যায়নি।" }, 404);
 
-          const { results } = await env.DB.prepare(
-            "SELECT id, name, blood_group, district, area, phone, age FROM donors WHERE blood_group = ? AND is_available = 1 ORDER BY (CASE WHEN district LIKE ? THEN 0 ELSE 1 END), id DESC LIMIT 20"
-          ).bind(req.blood_group, `%${req.district}%`).all();
+          const reqThana = req.thana || "";
+          const reqDist = (req.district || "রংপুর").trim();
+
+          const { results } = await env.DB.prepare(`
+            SELECT id, name, blood_group, district, area, phone, age,
+              (CASE 
+                WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
+                WHEN district = ? THEN 2
+                ELSE 3
+              END) as proximity_tier
+            FROM donors 
+            WHERE blood_group = ? AND is_available = 1 
+            ORDER BY proximity_tier ASC, id DESC LIMIT 20
+          `).bind(reqDist, `%${reqThana}%`, reqThana, reqDist, req.blood_group).all();
 
           return json({
             request_id: req.id,
             patient_name: req.patient_name,
             blood_group: req.blood_group,
             district: req.district,
+            thana: req.thana,
             hospital_name: req.hospital_name,
             contact_phone: req.contact_phone,
             donors: results || []
@@ -1559,17 +1618,18 @@ export async function onRequest(context) {
             patient_name: "টেস্ট রোগী",
             blood_group: "O+",
             units: 1,
-            hospital_name: "ঢাকা মেডিকেল কলেজ হাসপাতাল",
-            district: "ঢাকা",
+            hospital_name: "রংপুর মেডিকেল কলেজ হাসপাতাল",
+            district: "রংপুর",
+            thana: "কোতোয়ালি",
             location: "জরুরি বিভাগ",
             contact_phone: "01700000000",
             urgency: "Testing",
             needed_by: "জরুরি",
-            note: "BRYBDPF টেলিগ্রাম বট ইন্টিগ্রেশন সফলভাবে কাজ করছে!"
+            note: "BRYBDPF রংপুর বিভাগীয় টেলিগ্রাম বট সফলভাবে কাজ করছে!"
           };
           const sampleDonors = [
-            { name: "করিম হোসেন", blood_group: "O+", district: "ঢাকা", area: "ধানমন্ডি", phone: "01711111111" },
-            { name: "রাকিব হাসান", blood_group: "O+", district: "ঢাকা", area: "মিরপুর", phone: "01822222222" }
+            { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", area: "কোতোয়ালি", phone: "01711111111", proximity_tier: 1 },
+            { name: "রাকিব হাসান", blood_group: "O+", district: "নীলফামারী", area: "সৈয়দপুর", phone: "01822222222", proximity_tier: 3 }
           ];
           await sendTelegramAlert(env, testRequest, sampleDonors);
           
