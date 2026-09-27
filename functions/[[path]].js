@@ -83,7 +83,7 @@ function json(data, status = 200, extraHeaders = {}) {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, X-Telegram-Bot-Api-Secret-Token",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -1161,10 +1161,10 @@ export async function onRequest(context) {
           }
 
           const stmt = env.DB.prepare(`
-            INSERT INTO donors (\
-              name, blood_group, phone, district, area, age, gender,\
-              last_donation_date, total_donations, is_available,\
-              agreed_future_donation, agreed_data_save\
+            INSERT INTO donors (
+              name, blood_group, phone, district, area, age, gender,
+              last_donation_date, total_donations, is_available,
+              agreed_future_donation, agreed_data_save
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
           `);
 
@@ -1230,10 +1230,10 @@ export async function onRequest(context) {
           const cleanThana = (thana || "").trim();
 
           const insertReqStmt = env.DB.prepare(`
-            INSERT INTO blood_requests (\
-              patient_name, blood_group, units, district, thana, hospital_name,\
-              location, contact_phone, urgency, needed_by, note, requester_name,\
-              status, requester_blood_group\
+            INSERT INTO blood_requests (
+              patient_name, blood_group, units, district, thana, hospital_name,
+              location, contact_phone, urgency, needed_by, note, requester_name,
+              status, requester_blood_group
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
           `);
 
@@ -1263,9 +1263,9 @@ export async function onRequest(context) {
           const existingDonor = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
           if (!existingDonor) {
             await env.DB.prepare(`
-              INSERT INTO donors (\
-                name, blood_group, phone, district, area, age, gender,\
-                is_available, agreed_future_donation, agreed_data_save\
+              INSERT INTO donors (
+                name, blood_group, phone, district, area, age, gender,
+                is_available, agreed_future_donation, agreed_data_save
               ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1)
             `).bind(
               donorNameToRegister,
@@ -1284,22 +1284,22 @@ export async function onRequest(context) {
             const cleanThana = (thana || "").trim();
 
             const { results } = await env.DB.prepare(`
-              SELECT name, blood_group, district, area, phone,\
-                (CASE \
-                  WHEN district = ? AND area LIKE ? AND ? != '' THEN 1\
-                  WHEN district = ? THEN 2\
-                  ELSE 3\
-                END) as proximity_tier\
-              FROM donors \
-              WHERE blood_group = ? AND is_available = 1 AND phone != ?\
-              ORDER BY \
-                proximity_tier ASC,\
-                RANDOM()\
-              LIMIT 20\
+              SELECT name, blood_group, district, area, phone,
+                (CASE 
+                  WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
+                  WHEN district = ? THEN 2
+                  ELSE 3
+                END) as proximity_tier
+              FROM donors 
+              WHERE blood_group = ? AND is_available = 1 AND phone != ?
+              ORDER BY 
+                proximity_tier ASC,
+                RANDOM()
+              LIMIT 20
             `).bind(
-              cleanDist, `%${cleanThana}%`, cleanThana,\
-              cleanDist,\
-              blood_group, cleanPhone\
+              cleanDist, `%${cleanThana}%`, cleanThana,
+              cleanDist,
+              blood_group, cleanPhone
             ).all();
             matchedDonors = results || [];
           } catch (e) {
