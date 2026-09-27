@@ -200,15 +200,14 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
           `• *মোবাইল:* *${requestData.contact_phone}*\n` +
           (requestData.note ? `• *নোট:* ${requestData.note}\n` : "") +
           `───────────────────────\n` +
-          `🤲 *আপনার একটু সহযোগিতায় বাঁচতে পারে একটি জীবন।*\n` +
-          `আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n` +
+          `🤲 আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n` +
           `🌐 BRYBDPF ব্লাড নেটওয়ার্ক`;
 
         const donorWaUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(promptForDonor)}`;
         const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী]");
         const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
 
-        return `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
+        return `${i + 1}. <b>${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
           `   📞 <code>${d.phone}</code> ➔ <a href="${donorWaUrl}">💬 <b>WhatsApp</b></a>`;
       });
     } else {
@@ -1019,18 +1018,6 @@ export async function onRequest(context) {
       const method = request.method;
       const ip = getClientIP(request);
 
-    // Automatic Edge-level UTM parameter stripping (?utm_source=gemini etc.)
-    if (method === "GET" && (url.searchParams.has("utm_source") || url.searchParams.has("utm_medium") || url.searchParams.has("utm_campaign"))) {
-      url.searchParams.delete("utm_source");
-      url.searchParams.delete("utm_medium");
-      url.searchParams.delete("utm_campaign");
-      url.searchParams.delete("utm_term");
-      url.searchParams.delete("utm_content");
-      const cleanSearch = url.searchParams.toString();
-      const cleanUrl = url.origin + url.pathname + (cleanSearch ? "?" + cleanSearch : "") + url.hash;
-      return Response.redirect(cleanUrl, 301);
-    }
-
       if (method === "OPTIONS") return json({ ok: true });
 
       
@@ -1623,7 +1610,10 @@ export async function onRequest(context) {
       }
 
       if (path === "/admin" || path === "/admin/") {
-        return Response.redirect(`${url.origin}/admin.html`, 301);
+        if (env.ASSETS) {
+          return env.ASSETS.fetch(new Request(`${url.origin}/admin.html`, request));
+        }
+        return context.next();
       }
       return context.next();
     } catch (uncaughtError) {
