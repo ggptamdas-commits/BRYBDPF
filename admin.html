@@ -12,7 +12,7 @@
     }
   </script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -36,9 +36,19 @@
   <style>
     body { font-family: 'Hind Siliguri', sans-serif; }
     .tap-target { min-height: 44px; min-width: 44px; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-4 right-4 z-50 transform transition-all duration-300 translate-y-[-100px] opacity-0 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-semibold max-w-sm">
+    <span id="toast-icon">ℹ️</span>
+    <span id="toast-msg">বার্তা</span>
+  </div>
+
+  <!-- INITIAL SETUP VIEW (Only accessible when no admin exists) -->
   <div id="setup-view" class="hidden min-h-screen flex items-center justify-center p-4 bg-slate-900">
     <div class="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-700">
       <div class="text-center mb-6">
@@ -46,7 +56,7 @@
           <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
         </div>
         <h2 class="text-xl font-bold text-slate-900">BRYBDPF অ্যাডমিন প্রাথমিক সেটআপ</h2>
-        <p class="text-xs text-slate-500 mt-1">কোডের কোথাও অ্যাডমিন তথ্য নেই। আপনার নিজস্ব সুরক্ষিত ইমেইল ও পাসওয়ার্ড সেট করুন।</p>
+        <p class="text-xs text-slate-500 mt-1">শুধুমাত্র প্রথমবার অ্যাডমিন অ্যাকাউন্ট তৈরির জন্য। পরবর্তীতে এই অপশন স্থায়ীভাবে বন্ধ থাকবে।</p>
       </div>
 
       <div id="setup-alert" class="hidden p-3 rounded-xl text-xs font-semibold mb-4"></div>
@@ -71,20 +81,18 @@
         <button type="submit" id="setup-btn" class="w-full py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white font-bold text-sm shadow-md transition">
           অ্যাডমিন একাউন্ট সম্পন্ন করুন
         </button>
-        <div class="text-center pt-3 border-t border-slate-100">
-          <button type="button" onclick="showLoginView()" class="text-xs font-semibold text-slate-500 hover:text-slate-800 transition">ইতিমধ্যে অ্যাডমিন একাউন্ট থাকলে সরাসরি লগইন করুন</button>
-        </div>
       </form>
     </div>
   </div>
 
+  <!-- LOGIN VIEW -->
   <div id="login-view" class="hidden min-h-screen flex items-center justify-center p-4 bg-slate-900">
     <div class="max-w-sm w-full bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-700">
       <div class="text-center mb-6">
-        <div class="w-12 h-12 bg-slate-900 rounded-2xl mx-auto flex items-center justify-center text-white mb-3">
+        <div class="w-12 h-12 bg-slate-900 rounded-2xl mx-auto flex items-center justify-center text-white mb-3 shadow-md">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
         </div>
-        <h2 class="text-xl font-bold text-slate-900">অ্যাডমিন লগইন</h2>
+        <h2 class="text-xl font-bold text-slate-900">অ্যাডমিন সুরক্ষিত লগইন</h2>
         <p class="text-xs text-slate-500 mt-1">সর্বোচ্চ ৫ বার ভুল চেষ্টার পর আইপি সাময়িকভাবে লক হয়ে যাবে।</p>
       </div>
 
@@ -99,77 +107,183 @@
           <label class="block text-xs font-semibold text-slate-700 mb-1">পাসওয়ার্ড</label>
           <input type="password" id="login-password" required placeholder="••••••••" class="w-full h-11 px-3 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-crimson-500">
         </div>
-        <button type="submit" id="login-btn" class="tap-target w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-md transition">
-          সুরক্ষিত লগইন
+        <button type="submit" id="login-btn" class="tap-target w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+          <span>সুরক্ষিত লগইন</span>
         </button>
-        <div class="text-center pt-3 border-t border-slate-100">
-          <button type="button" onclick="showSetupView()" class="text-xs font-semibold text-crimson-600 hover:text-crimson-700 transition">নতুন অ্যাডমিন? এখানে ক্লিক করে প্রাথমিক সেটআপ সম্পন্ন করুন</button>
+
+        <!-- Container for setup toggle: Will be COMPLETELY REMOVED from DOM if admin exists -->
+        <div id="new-admin-setup-container" class="hidden text-center pt-3 border-t border-slate-100">
+          <button type="button" onclick="showSetupView()" class="text-xs font-semibold text-crimson-600 hover:text-crimson-700 transition">
+            নতুন অ্যাডমিন? এখানে ক্লিক করে প্রাথমিক সেটআপ সম্পন্ন করুন
+          </button>
         </div>
       </form>
     </div>
   </div>
 
-  <div id="dashboard-view" class="hidden flex-1 flex flex-col">
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-crimson-600 flex items-center justify-center text-white">
-            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboard-view" class="hidden flex-1 flex flex-col min-w-0">
+    <!-- Responsive Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+      <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <!-- Top row: Logo, User, Logout -->
+        <div class="h-14 sm:h-16 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-crimson-600 flex items-center justify-center text-white shrink-0 shadow-sm">
+              <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            </div>
+            <div class="min-w-0">
+              <h1 class="text-sm sm:text-base font-bold text-slate-900 truncate">BRYBDPF অ্যাডমিন</h1>
+              <p class="text-[10px] sm:text-[11px] text-slate-500 truncate" id="admin-display-email">admin</p>
+            </div>
           </div>
-          <div>
-            <h1 class="text-base font-bold text-slate-900">BRYBDPF অ্যাডমিন</h1>
-            <p class="text-[11px] text-slate-500" id="admin-display-email">admin</p>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <a href="/" target="_blank" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 transition hidden sm:inline-block">
+              সাইট দেখুন ↗
+            </a>
+            <button onclick="handleLogout()" class="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 transition">
+              লগআউট
+            </button>
           </div>
         </div>
 
-        <div class="flex items-center gap-1 sm:gap-2">
-          <button onclick="switchTab('donors')" id="tab-btn-donors" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-crimson-700 transition">ডোনার তালিকা</button>
-          <button onclick="switchTab('requests')" id="tab-btn-requests" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">ব্লাড রিকোয়েস্ট</button>
-          <button onclick="switchTab('settings')" id="tab-btn-settings" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">টেলিগ্রাম ও সেটিংস</button>
-          <a href="/" target="_blank" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800 transition">সাইট দেখুন</a>
-          <button onclick="handleLogout()" class="ml-2 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 transition">লগআউট</button>
+        <!-- Navigation Tabs Bar (Scrollable on small screens, never breaks or overflows) -->
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 border-t border-slate-100">
+          <button onclick="switchTab('requests')" id="tab-btn-requests" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap bg-rose-50 text-crimson-700 transition flex items-center gap-1.5 shrink-0">
+            <span>📋 ব্লাড রিকোয়েস্ট</span>
+            <span id="badge-pending-count" class="hidden px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-crimson-600 text-white">0</span>
+          </button>
+          <button onclick="switchTab('donors')" id="tab-btn-donors" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap text-slate-600 hover:bg-slate-50 transition shrink-0">
+            🩸 ডোনার তালিকা
+          </button>
+          <button onclick="switchTab('settings')" id="tab-btn-settings" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap text-slate-600 hover:bg-slate-50 transition shrink-0">
+            ⚙️ টেলিগ্রাম ও সেটিংস
+          </button>
+          <a href="/" target="_blank" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap text-slate-600 hover:bg-slate-50 transition shrink-0 sm:hidden">
+            🌐 সাইট দেখুন
+          </a>
         </div>
       </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div class="text-xs text-slate-500 font-medium">মোট ডোনার</div>
-          <div class="text-2xl font-bold text-slate-900 mt-1" id="m-total-donors">0</div>
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7 w-full flex-1">
+      
+      <!-- Stats Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="text-[11px] sm:text-xs text-slate-500 font-medium">মোট ডোনার</div>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 mt-1" id="m-total-donors">0</div>
         </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div class="text-xs text-slate-500 font-medium">প্রস্তুত ডোনার</div>
-          <div class="text-2xl font-bold text-emerald-600 mt-1" id="m-active-donors">0</div>
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="text-[11px] sm:text-xs text-slate-500 font-medium">প্রস্তুত ডোনার</div>
+          <div class="text-xl sm:text-2xl font-bold text-emerald-600 mt-1" id="m-active-donors">0</div>
         </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div class="text-xs text-slate-500 font-medium">মোট রিকোয়েস্ট</div>
-          <div class="text-2xl font-bold text-slate-900 mt-1" id="m-total-requests">0</div>
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="text-[11px] sm:text-xs text-slate-500 font-medium">মোট রিকোয়েস্ট (১০ দিন)</div>
+          <div class="text-xl sm:text-2xl font-bold text-slate-900 mt-1" id="m-total-requests">0</div>
         </div>
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div class="text-xs text-slate-500 font-medium">অপেক্ষমান রিকোয়েস্ট</div>
-          <div class="text-2xl font-bold text-amber-600 mt-1" id="m-pending-requests">0</div>
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="text-[11px] sm:text-xs text-slate-500 font-medium">অপেক্ষমাণ রিকোয়েস্ট</div>
+          <div class="text-xl sm:text-2xl font-bold text-amber-600 mt-1" id="m-pending-requests">0</div>
         </div>
       </div>
 
-      <div id="tab-donors" class="space-y-4">
-        <div class="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pb-4 border-b border-slate-100">
-            <h2 class="font-bold text-slate-900 text-lg">ডোনার ব্যবস্থাপনা ও ফিল্টারিং</h2>
-            <div class="flex items-center gap-2 w-full sm:w-auto">
-              <select id="admin-filter-bg" onchange="fetchAdminDonors()" class="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold">
-                <option value="ALL">সকল রক্তের গ্রুপ</option>
-                <option value="A+">A+</option><option value="A-">A-</option>
-                <option value="B+">B+</option><option value="B-">B-</option>
-                <option value="AB+">AB+</option><option value="AB-">AB-</option>
-                <option value="O+">O+</option><option value="O-">O-</option>
+      <!-- TAB: BLOOD REQUESTS (Default Active Tab) -->
+      <div id="tab-requests" class="space-y-4">
+        <div class="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div>
+              <h2 class="font-bold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                <span>রক্তের রিকোয়েস্ট তালিকা</span>
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-normal">বিগত ১০ দিন</span>
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">স্ট্যাটাস পরিবর্তন করুন এবং ১-ক্লিকে ডোনার তালিকা শেয়ার করুন।</p>
+            </div>
+            
+            <!-- Filters -->
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-semibold text-slate-600 shrink-0">স্ট্যাটাস:</label>
+              <select id="admin-filter-status" onchange="changeRequestStatusFilter()" class="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-crimson-500">
+                <option value="ALL">সকল স্ট্যাটাস</option>
+                <option value="Pending">অপেক্ষমাণ (Pending)</option>
+                <option value="Matched">ম্যাচড (Matched)</option>
+                <option value="Fulfilled">সম্পন্ন (Fulfilled)</option>
+                <option value="Closed">বন্ধ (Closed)</option>
               </select>
-              <input type="text" id="admin-search-text" oninput="debounceSearch()" placeholder="নাম বা মোবাইল নম্বর..." class="h-10 px-3 rounded-xl border border-slate-200 text-xs flex-1 sm:w-48">
+              <button onclick="fetchAdminRequests()" title="রিফ্রেশ করুন" class="h-10 w-10 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition">
+                ↻
+              </button>
             </div>
           </div>
 
-          <div class="overflow-x-auto mt-4">
-            <table class="w-full text-left text-xs text-slate-600">
+          <!-- Table Container with Horizontal Scroll Protection -->
+          <div class="overflow-x-auto mt-4 rounded-xl border border-slate-100">
+            <table class="w-full text-left text-xs text-slate-600 min-w-[760px]">
+              <thead class="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
+                <tr>
+                  <th class="p-3">রোগীর তথ্য</th>
+                  <th class="p-3">প্রয়োজনীয় রক্ত</th>
+                  <th class="p-3">আবেদনকারী ও ফোন</th>
+                  <th class="p-3">হাসপাতাল ও এলাকা</th>
+                  <th class="p-3">সময়সীমা</th>
+                  <th class="p-3">স্ট্যাটাস (পরিবর্তন)</th>
+                  <th class="p-3 text-right">অ্যাকশন</th>
+                </tr>
+              </thead>
+              <tbody id="admin-requests-tbody" class="divide-y divide-slate-100">
+                <tr>
+                  <td colspan="7" class="p-6 text-center text-slate-400">রিকোয়েস্ট লোড হচ্ছে...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Controls (Max 10 per page) -->
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 mt-3 text-xs">
+            <div class="text-slate-500" id="requests-pagination-info">
+              পৃষ্ঠা ১ এর ১ (মোট ০ টি রিকোয়েস্ট)
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="req-prev-btn" onclick="prevRequestPage()" disabled class="px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition font-semibold">
+                ← পূর্ববর্তী
+              </button>
+              <span id="req-current-page-num" class="px-2 font-bold text-slate-800">১</span>
+              <button id="req-next-btn" onclick="nextRequestPage()" disabled class="px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition font-semibold">
+                পরবর্তী →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: DONORS -->
+      <div id="tab-donors" class="hidden space-y-4">
+        <div class="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div>
+              <h2 class="font-bold text-slate-900 text-base sm:text-lg">ডোনার ব্যবস্থাপনা</h2>
+              <p class="text-xs text-slate-500 mt-0.5">সকল নিবন্ধিত রক্তদাতাদের তালিকা ও সক্রিয়তা নিয়ন্ত্রণ।</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <select id="admin-filter-bg" onchange="fetchAdminDonors()" class="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold bg-white outline-none">
+                <option value="ALL">সকল রক্তের গ্রুপ</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+              </select>
+              <input type="text" id="admin-search-text" oninput="debounceSearch()" placeholder="নাম বা মোবাইল..." class="h-10 px-3 rounded-xl border border-slate-200 text-xs flex-1 sm:w-48 outline-none">
+            </div>
+          </div>
+
+          <div class="overflow-x-auto mt-4 rounded-xl border border-slate-100">
+            <table class="w-full text-left text-xs text-slate-600 min-w-[700px]">
               <thead class="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
                 <tr>
                   <th class="p-3">নাম</th>
@@ -181,49 +295,22 @@
                   <th class="p-3 text-right">অ্যাকশন</th>
                 </tr>
               </thead>
-              <tbody id="admin-donors-tbody" class="divide-y divide-slate-100"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div id="tab-requests" class="hidden space-y-4">
-        <div class="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <div class="flex items-center justify-between pb-4 border-b border-slate-100">
-            <h2 class="font-bold text-slate-900 text-lg">ব্লাড রিকোয়েস্ট তালিকা ও ১-ক্লিক শেয়ার</h2>
-            <select id="admin-filter-status" onchange="fetchAdminRequests()" class="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold">
-              <option value="ALL">সকল স্ট্যাটাস</option>
-              <option value="Pending">অপেক্ষমান (Pending)</option>
-              <option value="Matched">ম্যাচড (Matched)</option>
-              <option value="Fulfilled">সম্পন্ন (Fulfilled)</option>
-              <option value="Closed">বন্ধ (Closed)</option>
-            </select>
-          </div>
-
-          <div class="overflow-x-auto mt-4">
-            <table class="w-full text-left text-xs text-slate-600">
-              <thead class="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
+              <tbody id="admin-donors-tbody" class="divide-y divide-slate-100">
                 <tr>
-                  <th class="p-3">রোগী ও প্রয়োজনীয় গ্রুপ</th>
-                  <th class="p-3">হাসপাতাল ও এলাকা</th>
-                  <th class="p-3">আবেদনকারী (প্রতিনিধি)</th>
-                  <th class="p-3">সময়সীমা</th>
-                  <th class="p-3">স্ট্যাটাস</th>
-                  <th class="p-3 text-right">ডোনার লিস্ট ও শেয়ার</th>
+                  <td colspan="7" class="p-6 text-center text-slate-400">ডোনার লোড হচ্ছে...</td>
                 </tr>
-              </thead>
-              <tbody id="admin-requests-tbody" class="divide-y divide-slate-100"></tbody>
+              </tbody>
             </table>
           </div>
         </div>
       </div>
 
+      <!-- TAB: SETTINGS -->
       <div id="tab-settings" class="hidden max-w-2xl mx-auto space-y-6">
-        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
           <h2 class="font-bold text-slate-900 text-base mb-1">টেলিগ্রাম বট কনফিগারেশন</h2>
-          <p class="text-xs text-slate-500 mb-4">নতুন রক্তের রিকোয়েস্ট আসলে তাৎক্ষণিকভাবে নির্ধারিত অ্যাডমিনদের টেলিগ্রামে অ্যালার্ট ও শীর্ষ ২০ ডোনার লিস্ট পাঠাবে।</p>
+          <p class="text-xs text-slate-500 mb-4">নতুন রক্তের রিকোয়েস্ট আসলে তাৎক্ষণিকভাবে অ্যাডমিনদের টেলিগ্রামে অ্যালার্ট ও শীর্ষ ২০ ডোনার লিস্ট পাঠাবে।</p>
           <div id="settings-alert" class="hidden p-3 rounded-xl text-xs font-semibold mb-4"></div>
-
           <form onsubmit="handleSaveSettings(event)" class="space-y-4">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">টেলিগ্রাম বট টোকেন (Bot Token)</label>
@@ -235,47 +322,53 @@
               <input type="text" id="cfg-tg-uids" placeholder="123456789, 987654321" class="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-mono outline-none">
             </div>
             <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-              <button type="button" onclick="testTelegramAlert()" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition">টেস্ট মেসেজ পাঠান</button>
-              <button type="submit" class="px-6 py-2.5 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-xs font-bold shadow transition">সেটিংস সংরক্ষণ করুন</button>
+              <button type="button" onclick="testTelegramAlert()" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition">
+                টেস্ট মেসেজ পাঠান
+              </button>
+              <button type="submit" class="px-6 py-2.5 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-xs font-bold shadow transition">
+                সেটিংস সংরক্ষণ করুন
+              </button>
             </div>
           </form>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
           <h2 class="font-bold text-slate-900 text-base mb-1">অ্যাডমিন পাসওয়ার্ড পরিবর্তন</h2>
           <p class="text-xs text-slate-500 mb-4">নিরাপত্তার স্বার্থে নিয়মিত শক্তিশালী পাসওয়ার্ড ব্যবহার করুন।</p>
-
           <form onsubmit="handleChangePassword(event)" class="space-y-4">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">বর্তমান পাসওয়ার্ড</label>
-              <input type="password" id="pwd-current" required class="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm">
+              <input type="password" id="pwd-current" required class="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm outline-none">
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">নতুন পাসওয়ার্ড (কমপক্ষে ৮ অক্ষর)</label>
-              <input type="password" id="pwd-new" minlength="8" required class="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm">
+              <input type="password" id="pwd-new" minlength="8" required class="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm outline-none">
             </div>
-            <button type="submit" class="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition">পাসওয়ার্ড আপডেট করুন</button>
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition">
+              পাসওয়ার্ড আপডেট করুন
+            </button>
           </form>
         </div>
       </div>
     </main>
   </div>
 
-  <div id="matching-modal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-6 max-h-[90vh] flex flex-col">
-      <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+  <!-- MATCHING DONORS MODAL -->
+  <div id="matching-modal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-5 sm:p-6 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <div>
           <h3 class="font-bold text-slate-900 text-base">ম্যাচিং ডোনার তালিকা ও ১-ক্লিক শেয়ার</h3>
           <p class="text-xs text-slate-500 mt-0.5" id="match-modal-subtitle">লোড হচ্ছে...</p>
         </div>
-        <button onclick="closeMatchingModal()" class="text-slate-400 hover:text-slate-600">
+        <button onclick="closeMatchingModal()" class="text-slate-400 hover:text-slate-600 p-1">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
 
       <div class="my-4 overflow-y-auto flex-1 space-y-2" id="matching-donors-list"></div>
 
-      <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
         <button onclick="copyShareText()" class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 flex items-center justify-center gap-1.5 transition">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           ডোনার লিস্ট কপি করুন
@@ -289,16 +382,23 @@
   </div>
 
   <script>
-    function showSetupView() {
-      document.getElementById('setup-view').classList.remove('hidden');
-      document.getElementById('login-view').classList.add('hidden');
-      document.getElementById('dashboard-view').classList.add('hidden');
-    }
+    let currentShareText = '';
+    let searchTimeout = null;
+    let isSetupAllowed = false;
+    let currentReqPage = 1;
+    let totalReqPages = 1;
+    let currentReqStatus = 'ALL';
 
-    function showLoginView() {
-      document.getElementById('login-view').classList.remove('hidden');
-      document.getElementById('setup-view').classList.add('hidden');
-      document.getElementById('dashboard-view').classList.add('hidden');
+    function showToast(msg, icon = '✅') {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').textContent = msg;
+      document.getElementById('toast-icon').textContent = icon;
+      toast.classList.remove('translate-y-[-100px]', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      setTimeout(() => {
+        toast.classList.add('translate-y-[-100px]', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 3500);
     }
 
     async function parseApiResponse(res) {
@@ -306,21 +406,26 @@
       try {
         return JSON.parse(text);
       } catch (e) {
-        return { error: text || 'সার্ভার থেকে কোনো প্রতিক্রিয়া পাওয়া যায়নি।' };
+        return { error: 'সার্ভার রেসপন্স ত্রুটি: ' + text.slice(0, 100) };
       }
     }
-
-    let currentShareText = '';
-    let searchTimeout = null;
 
     async function initAdmin() {
       try {
         const setupRes = await fetch('/api/admin/check-setup');
         const setupData = await parseApiResponse(setupRes);
-
-        if (setupData && setupData.needsSetup) {
+        
+        if (setupData.needsSetup) {
+          isSetupAllowed = true;
+          const setupContainer = document.getElementById('new-admin-setup-container');
+          if (setupContainer) setupContainer.classList.remove('hidden');
           showSetupView();
           return;
+        } else {
+          isSetupAllowed = false;
+          // Security: Permanently destroy setup container so no unauthorized person sees it
+          const setupContainer = document.getElementById('new-admin-setup-container');
+          if (setupContainer) setupContainer.remove();
         }
 
         const token = localStorage.getItem('brybdpf_admin_token');
@@ -329,296 +434,381 @@
           return;
         }
 
-        const dataRes = await fetch('/api/admin/data', {
+        const authRes = await fetch('/api/admin/data', {
           headers: { 'Authorization': 'Bearer ' + token }
         });
 
-        if (!dataRes.ok) {
+        if (authRes.ok) {
+          const data = await parseApiResponse(authRes);
+          showDashboardView(data);
+        } else {
           localStorage.removeItem('brybdpf_admin_token');
           showLoginView();
-          return;
         }
-
-        const overview = await parseApiResponse(dataRes);
-        document.getElementById('dashboard-view').classList.remove('hidden');
-        document.getElementById('setup-view').classList.add('hidden');
-        document.getElementById('login-view').classList.add('hidden');
-        document.getElementById('admin-display-email').textContent = overview.admin_email || 'Admin';
-        document.getElementById('m-total-donors').textContent = overview.total_donors || '0';
-        document.getElementById('m-active-donors').textContent = overview.active_donors || '0';
-        document.getElementById('m-total-requests').textContent = overview.total_requests || '0';
-        document.getElementById('m-pending-requests').textContent = overview.pending_requests || '0';
-
-        fetchAdminDonors();
-        fetchAdminRequests();
-        loadSettings();
       } catch (err) {
-        showSetupView();
+        console.error('Init error:', err);
+        showLoginView();
       }
+    }
+
+    function showSetupView() {
+      if (!isSetupAllowed) {
+        alert('অ্যাডমিন অ্যাকাউন্ট ইতিমধ্যে কনফিগার করা আছে। নতুন অ্যাডমিন তৈরি সম্পূর্ণ নিষিদ্ধ।');
+        showLoginView();
+        return;
+      }
+      document.getElementById('setup-view').classList.remove('hidden');
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('dashboard-view').classList.add('hidden');
+    }
+
+    function showLoginView() {
+      document.getElementById('setup-view').classList.add('hidden');
+      document.getElementById('login-view').classList.remove('hidden');
+      document.getElementById('dashboard-view').classList.add('hidden');
+    }
+
+    function showDashboardView(data) {
+      document.getElementById('setup-view').classList.add('hidden');
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('dashboard-view').classList.remove('hidden');
+
+      if (data) {
+        document.getElementById('admin-display-email').textContent = data.admin_email || 'অ্যাডমিন';
+        document.getElementById('m-total-donors').textContent = data.total_donors || 0;
+        document.getElementById('m-active-donors').textContent = data.active_donors || 0;
+        document.getElementById('m-total-requests').textContent = data.total_requests || 0;
+        document.getElementById('m-pending-requests').textContent = data.pending_requests || 0;
+
+        const badge = document.getElementById('badge-pending-count');
+        if (badge) {
+          if (data.pending_requests > 0) {
+            badge.textContent = data.pending_requests;
+            badge.classList.remove('hidden');
+          } else {
+            badge.classList.add('hidden');
+          }
+        }
+      }
+
+      switchTab('requests');
     }
 
     async function handleInitialSetup(e) {
       e.preventDefault();
+      if (!isSetupAllowed) {
+        alert('অ্যাডমিন ইতিমধ্যে কনফিগার করা আছে।');
+        showLoginView();
+        return;
+      }
+
+      const email = document.getElementById('setup-email').value;
+      const password = document.getElementById('setup-password').value;
+      const tgToken = document.getElementById('setup-tg-token').value;
+      const tgUids = document.getElementById('setup-tg-uids').value;
       const alertBox = document.getElementById('setup-alert');
       const btn = document.getElementById('setup-btn');
-      btn.disabled = true;
 
-      const payload = {
-        email: document.getElementById('setup-email').value,
-        password: document.getElementById('setup-password').value,
-        telegram_token: document.getElementById('setup-tg-token').value,
-        telegram_uids: document.getElementById('setup-tg-uids').value
-      };
+      btn.disabled = true;
+      btn.textContent = 'প্রসেসিং হচ্ছে...';
 
       try {
         const res = await fetch('/api/admin/setup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            email,
+            password,
+            telegram_token: tgToken,
+            telegram_uids: tgUids
+          })
         });
+
         const data = await parseApiResponse(res);
-        btn.disabled = false;
-
-        if (!res.ok) {
-          alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200 block';
+        if (res.ok) {
+          isSetupAllowed = false;
+          const setupContainer = document.getElementById('new-admin-setup-container');
+          if (setupContainer) setupContainer.remove();
+          alert('সেটআপ সম্পন্ন হয়েছে! এখন সুরক্ষিতভাবে লগইন করুন।');
+          showLoginView();
+        } else {
           alertBox.textContent = data.error || 'সেটআপ ব্যর্থ হয়েছে';
-          return;
+          alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
         }
-
-        alert('সেটআপ সম্পন্ন হয়েছে! এখন লগইন করুন।');
-        showLoginView();
       } catch (err) {
+        alertBox.textContent = 'নেটওয়ার্ক ত্রুটি: ' + err.message;
+        alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
+      } finally {
         btn.disabled = false;
-        alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200 block';
-        alertBox.textContent = 'ত্রুটি: ' + err.message;
+        btn.textContent = 'অ্যাডমিন একাউন্ট সম্পন্ন করুন';
       }
     }
 
     async function handleLogin(e) {
       e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
       const alertBox = document.getElementById('login-alert');
       const btn = document.getElementById('login-btn');
-      btn.disabled = true;
-      btn.textContent = 'যাচাই করা হচ্ছে...';
 
-      const payload = {
-        email: document.getElementById('login-email').value,
-        password: document.getElementById('login-password').value
-      };
+      btn.disabled = true;
+      btn.innerHTML = '<span>যাচাই হচ্ছে...</span>';
 
       try {
         const res = await fetch('/api/admin/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ email, password })
         });
+
         const data = await parseApiResponse(res);
-        btn.disabled = false;
-        btn.textContent = 'সুরক্ষিত লগইন';
-
-        if (!res.ok) {
-          alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200 block';
+        if (res.ok && data.token) {
+          localStorage.setItem('brybdpf_admin_token', data.token);
+          initAdmin();
+        } else {
           alertBox.textContent = data.error || 'লগইন ব্যর্থ হয়েছে';
-          return;
+          alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
         }
-
-        localStorage.setItem('brybdpf_admin_token', data.token);
-        location.reload();
       } catch (err) {
+        alertBox.textContent = 'নেটওয়ার্ক ত্রুটি: ' + err.message;
+        alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
+      } finally {
         btn.disabled = false;
-        btn.textContent = 'সুরক্ষিত লগইন';
-        alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200 block';
-        alertBox.textContent = 'ত্রুটি: ' + err.message;
+        btn.innerHTML = '<span>সুরক্ষিত লগইন</span>';
       }
     }
 
     async function handleLogout() {
       const token = localStorage.getItem('brybdpf_admin_token');
-      if (token) {
+      try {
         await fetch('/api/admin/logout', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + token }
         });
-      }
+      } catch (e) {}
       localStorage.removeItem('brybdpf_admin_token');
-      location.reload();
+      showLoginView();
     }
 
     function switchTab(tab) {
-      ['donors', 'requests', 'settings'].forEach(t => {
-        document.getElementById('tab-' + t).classList.add('hidden');
-        document.getElementById('tab-btn-' + t).className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition';
-      });
-      document.getElementById('tab-' + tab).classList.remove('hidden');
-      document.getElementById('tab-btn-' + tab).className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-crimson-700 transition';
-    }
-
-    async function fetchAdminDonors() {
-      const token = localStorage.getItem('brybdpf_admin_token');
-      const bg = document.getElementById('admin-filter-bg').value;
-      const search = document.getElementById('admin-search-text').value.trim();
-
-      try {
-        const url = `/api/admin/donors?blood_group=${encodeURIComponent(bg)}&search=${encodeURIComponent(search)}`;
-        const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-        const data = await parseApiResponse(res);
-
-        const tbody = document.getElementById('admin-donors-tbody');
-        if (!data.donors || data.donors.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-400">কোনো ডোনার পাওয়া যায়নি</td></tr>';
-          return;
+      const tabs = ['requests', 'donors', 'settings'];
+      tabs.forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        const btn = document.getElementById('tab-btn-' + t);
+        if (el) el.classList.toggle('hidden', t !== tab);
+        if (btn) {
+          if (t === tab) {
+            btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap bg-rose-50 text-crimson-700 transition flex items-center gap-1.5 shrink-0';
+          } else {
+            btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap text-slate-600 hover:bg-slate-50 transition shrink-0';
+          }
         }
+      });
 
-        tbody.innerHTML = data.donors.map(d => `
-          <tr class="hover:bg-slate-50/80 transition">
-            <td class="p-3 font-bold text-slate-900">${escapeHtml(d.name)}</td>
-            <td class="p-3"><span class="px-2 py-0.5 bg-rose-100 text-crimson-700 font-extrabold rounded">${d.blood_group}</span></td>
-            <td class="p-3 font-mono font-medium">${d.phone}</td>
-            <td class="p-3">${escapeHtml(d.district)}, ${escapeHtml(d.area)}</td>
-            <td class="p-3">${d.age} বছর (${d.gender === 'Male' ? 'পুরুষ' : 'নারী'})</td>
-            <td class="p-3">
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${d.is_available ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}">
-                ${d.is_available ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
-              </span>
-            </td>
-            <td class="p-3 text-right">
-              <button onclick="toggleDonorStatus(${d.id})" class="px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-200 hover:bg-white text-slate-700">
-                ${d.is_available ? 'নিষ্ক্রিয় করুন' : 'সক্রিয় করুন'}
-              </button>
-            </td>
-          </tr>
-        `).join('');
-      } catch (err) {
-        console.error(err);
+      if (tab === 'requests') fetchAdminRequests();
+      if (tab === 'donors') fetchAdminDonors();
+      if (tab === 'settings') fetchAdminSettings();
+    }
+
+    // Requests Management with 10-day limit and 10 per page pagination
+    function changeRequestStatusFilter() {
+      currentReqStatus = document.getElementById('admin-filter-status').value;
+      currentReqPage = 1;
+      fetchAdminRequests();
+    }
+
+    function prevRequestPage() {
+      if (currentReqPage > 1) {
+        currentReqPage--;
+        fetchAdminRequests();
       }
     }
 
-    async function toggleDonorStatus(id) {
-      const token = localStorage.getItem('brybdpf_admin_token');
-      try {
-        await fetch(`/api/admin/donors/${id}/toggle`, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        fetchAdminDonors();
-      } catch (err) {
-        alert('স্ট্যাটাস আপডেট ব্যর্থ হয়েছে');
+    function nextRequestPage() {
+      if (currentReqPage < totalReqPages) {
+        currentReqPage++;
+        fetchAdminRequests();
       }
-    }
-
-    function debounceSearch() {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(fetchAdminDonors, 300);
     }
 
     async function fetchAdminRequests() {
       const token = localStorage.getItem('brybdpf_admin_token');
-      const status = document.getElementById('admin-filter-status').value;
+      const tbody = document.getElementById('admin-requests-tbody');
+      tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">রিকোয়েস্ট লোড হচ্ছে...</td></tr>';
 
       try {
-        const res = await fetch(`/api/admin/requests?status=${encodeURIComponent(status)}`, {
+        const res = await fetch(`/api/admin/requests?status=${encodeURIComponent(currentReqStatus)}&page=${currentReqPage}&limit=10`, {
           headers: { 'Authorization': 'Bearer ' + token }
         });
-        const data = await parseApiResponse(res);
-        const tbody = document.getElementById('admin-requests-tbody');
 
-        if (!data.requests || data.requests.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-slate-400">কোনো রিকোয়েস্ট পাওয়া যায়নি</td></tr>';
+        if (res.status === 401) {
+          handleLogout();
           return;
         }
 
-        tbody.innerHTML = data.requests.map(r => `
-          <tr class="hover:bg-slate-50/80 transition">
-            <td class="p-3 font-bold text-slate-900">${escapeHtml(r.patient_name)}<br><span class="px-2 py-0.5 bg-rose-100 text-crimson-700 font-extrabold rounded text-[11px]">${r.blood_group}</span> (${r.units} ব্যাগ)</td>
-            <td class="p-3">${escapeHtml(r.hospital_name)}<br><span class="text-slate-400 text-[11px]">${escapeHtml(r.district)}, ${escapeHtml(r.location)}</span></td>
-            <td class="p-3"><b>${escapeHtml(r.requester_name || r.patient_name)}</b><br><span class="text-[11px] text-slate-500">গ্রুপ: <span class="font-bold text-slate-800">${r.requester_blood_group || '-'}</span></span><br><a href="tel:${r.contact_phone}" class="font-mono text-blue-600 text-[11px]">${r.contact_phone}</a></td>
-            <td class="p-3 text-slate-600">${escapeHtml(r.needed_by)}</td>
-            <td class="p-3">
-              <select onchange="updateRequestStatus(${r.id}, this.value)" class="h-8 px-2 rounded-lg border border-slate-200 text-[11px] font-semibold">
-                <option value="Pending" ${r.status === 'Pending' ? 'selected' : ''}>Pending</option>
-                <option value="Matched" ${r.status === 'Matched' ? 'selected' : ''}>Matched</option>
-                <option value="Fulfilled" ${r.status === 'Fulfilled' ? 'selected' : ''}>Fulfilled</option>
-                <option value="Closed" ${r.status === 'Closed' ? 'selected' : ''}>Closed</option>
-              </select>
-            </td>
-            <td class="p-3 text-right">
-              <button onclick="openMatchingModal(${r.id})" class="px-3 py-1.5 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-xs font-bold shadow-sm transition">
-                ম্যাচিং ডোনার
-              </button>
-            </td>
-          </tr>
-        `).join('');
+        const data = await parseApiResponse(res);
+        const requests = data.requests || [];
+        const total = data.total !== undefined ? data.total : requests.length;
+        totalReqPages = data.total_pages || 1;
+        currentReqPage = data.page || 1;
+
+        // Update Pagination Controls
+        document.getElementById('requests-pagination-info').textContent = `বিগত ১০ দিনের মোট ${total} টি রিকোয়েস্ট (পৃষ্ঠা ${currentReqPage} এর ${totalReqPages})`;
+        document.getElementById('req-current-page-num').textContent = currentReqPage;
+        document.getElementById('req-prev-btn').disabled = (currentReqPage <= 1);
+        document.getElementById('req-next-btn').disabled = (currentReqPage >= totalReqPages);
+
+        if (requests.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">বিগত ১০ দিনে এই ক্যাটাগরিতে কোনো রিকোয়েস্ট পাওয়া যায়নি।</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = requests.map(r => {
+          const cleanPhone = (r.contact_phone || '').replace(/[^0-9]/g, '');
+          const waNumber = cleanPhone.startsWith('88') ? cleanPhone : (cleanPhone.startsWith('0') ? '88' + cleanPhone : cleanPhone);
+          
+          let statusBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+          if (r.status === 'Matched') statusBadgeClass = 'bg-blue-50 text-blue-700 border-blue-200';
+          if (r.status === 'Fulfilled') statusBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+          if (r.status === 'Closed') statusBadgeClass = 'bg-slate-100 text-slate-600 border-slate-200';
+
+          return `
+            <tr class="hover:bg-slate-50/70 transition">
+              <td class="p-3">
+                <div class="font-bold text-slate-900">${escapeHtml(r.patient_name)}</div>
+                <div class="text-[11px] text-slate-500">${escapeHtml(r.units || 1)} ব্যাগ | ${escapeHtml(r.urgency || 'জরুরি')}</div>
+              </td>
+              <td class="p-3">
+                <span class="inline-block px-2.5 py-0.5 rounded-lg bg-rose-50 text-crimson-700 font-bold border border-rose-200">${escapeHtml(r.blood_group)}</span>
+              </td>
+              <td class="p-3">
+                <div class="font-medium text-slate-800">${escapeHtml(r.requester_name || 'স্বজন')}</div>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <a href="tel:${escapeHtml(r.contact_phone)}" class="text-blue-600 hover:underline font-mono text-[11px]">${escapeHtml(r.contact_phone)}</a>
+                  <a href="https://wa.me/${waNumber}" target="_blank" class="text-emerald-600 hover:opacity-80" title="হোয়াটসঅ্যাপে চ্যাট">💬</a>
+                </div>
+              </td>
+              <td class="p-3">
+                <div class="font-medium text-slate-800">${escapeHtml(r.hospital_name)}</div>
+                <div class="text-[11px] text-slate-500">${escapeHtml(r.district)}${r.location ? ', ' + escapeHtml(r.location) : ''}</div>
+              </td>
+              <td class="p-3">
+                <div class="text-slate-700 font-medium">${escapeHtml(r.needed_by || 'যত দ্রুত সম্ভব')}</div>
+              </td>
+              <td class="p-3">
+                <select onchange="updateRequestStatus(${r.id}, this.value)" class="h-8 px-2 py-0.5 rounded-lg text-xs font-bold border ${statusBadgeClass} outline-none cursor-pointer">
+                  <option value="Pending" ${r.status === 'Pending' ? 'selected' : ''}>অপেক্ষমাণ (Pending)</option>
+                  <option value="Matched" ${r.status === 'Matched' ? 'selected' : ''}>ম্যাচড (Matched)</option>
+                  <option value="Fulfilled" ${r.status === 'Fulfilled' ? 'selected' : ''}>সম্পন্ন (Fulfilled)</option>
+                  <option value="Closed" ${r.status === 'Closed' ? 'selected' : ''}>বন্ধ (Closed)</option>
+                </select>
+              </td>
+              <td class="p-3 text-right">
+                <button onclick="openMatchingModal(${r.id})" class="px-3 py-1.5 rounded-lg bg-crimson-600 hover:bg-crimson-700 text-white font-bold text-[11px] shadow-xs transition">
+                  ডোনার লিস্ট
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join('');
       } catch (err) {
-        console.error(err);
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-rose-500">লোড ব্যর্থ: ${escapeHtml(err.message)}</td></tr>`;
       }
     }
 
     async function updateRequestStatus(id, newStatus) {
       const token = localStorage.getItem('brybdpf_admin_token');
       try {
-        await fetch(`/api/admin/requests/${id}/status`, {
-          method: 'POST',
+        const res = await fetch(`/api/admin/requests/${id}/status`, {
+          method: 'PATCH',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ status: newStatus })
         });
-        fetchAdminRequests();
+        const data = await parseApiResponse(res);
+        if (res.ok) {
+          showToast(`স্ট্যাটাস সফলভাবে '${newStatus}'-এ পরিবর্তিত হয়েছে!`);
+          // Refresh counts and data
+          const authRes = await fetch('/api/admin/data', { headers: { 'Authorization': 'Bearer ' + token } });
+          if (authRes.ok) {
+            const counts = await parseApiResponse(authRes);
+            document.getElementById('m-pending-requests').textContent = counts.pending_requests || 0;
+            const badge = document.getElementById('badge-pending-count');
+            if (badge) {
+              if (counts.pending_requests > 0) {
+                badge.textContent = counts.pending_requests;
+                badge.classList.remove('hidden');
+              } else {
+                badge.classList.add('hidden');
+              }
+            }
+          }
+        } else {
+          alert(data.error || 'স্ট্যাটাস আপডেট ব্যর্থ');
+          fetchAdminRequests();
+        }
       } catch (err) {
-        alert('স্ট্যাটাস আপডেট ব্যর্থ হয়েছে');
+        alert('ত্রুটি: ' + err.message);
+        fetchAdminRequests();
       }
     }
 
-    async function openMatchingModal(requestId) {
+    async function openMatchingModal(reqId) {
       const token = localStorage.getItem('brybdpf_admin_token');
       const modal = document.getElementById('matching-modal');
-      const list = document.getElementById('matching-donors-list');
-      const sub = document.getElementById('match-modal-subtitle');
+      const listEl = document.getElementById('matching-donors-list');
+      const subtitle = document.getElementById('match-modal-subtitle');
+      const btnWa = document.getElementById('btn-wa-share');
+
       modal.classList.remove('hidden');
-      list.innerHTML = '<div class="text-center py-8 text-xs text-slate-400">ডোনার খোঁজা হচ্ছে...</div>';
+      listEl.innerHTML = '<div class="p-4 text-center text-slate-400">অনুসন্ধান করা হচ্ছে...</div>';
 
       try {
-        const res = await fetch(`/api/admin/requests/${requestId}/matching`, {
+        const res = await fetch(`/api/admin/requests/${reqId}/match-donors`, {
           headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await parseApiResponse(res);
-        const req = data.request;
+        if (!res.ok) throw new Error(data.error || 'ম্যাচিং ডোনার পাওয়া যায়নি');
+
+        subtitle.textContent = `রোগী: ${data.patient_name} (${data.blood_group}) | জেলা: ${data.district}`;
+
+        const reqCleanPhone = (data.contact_phone || '').replace(/[^0-9]/g, '');
+        const reqWaNumber = reqCleanPhone.startsWith('88') ? reqCleanPhone : (reqCleanPhone.startsWith('0') ? '88' + reqCleanPhone : reqCleanPhone);
+
+        let shareText = `আসসালামু আলাইকুম, BRYBDPF থেকে আপনার কাঙ্ক্ষিত ${data.blood_group} রক্তের ডোনারদের তালিকা:\\n\\n`;
         const donors = data.donors || [];
 
-        sub.textContent = `রোগী: ${req.patient_name} (${req.blood_group}) - ${req.hospital_name}, ${req.district}`;
-
-        let shareMsg = `আসসালামু আলাইকুম, BRYBDPF থেকে জরুরি ${req.blood_group} রক্তের সম্ভাব্য ডোনার তালিকা:\n\n`;
-
         if (donors.length === 0) {
-          list.innerHTML = '<div class="text-center py-8 text-xs text-slate-500">এই মুহূর্তে প্রস্তুত কোনো ডোনার পাওয়া যায়নি।</div>';
-          shareMsg += `দুঃখিত, এই মুহূর্তে প্রস্তুত কোনো ডোনার পাওয়া যায়নি। আমরা আরও চেষ্টা করছি।`;
+          listEl.innerHTML = '<div class="p-4 text-center text-rose-500 font-semibold">এই গ্রুপের কোনো প্রস্তুত ডোনার পাওয়া যায়নি।</div>';
+          shareText += 'দুঃখিত, এই মুহূর্তে এই গ্রুপের কোনো সক্রিয় ডোনার পাওয়া যায়নি।';
         } else {
-          list.innerHTML = donors.map((d, i) => `
-            <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs">
-              <div>
-                <span class="font-bold text-slate-900">${i + 1}. ${escapeHtml(d.name)}</span>
-                <span class="ml-1.5 px-1.5 py-0.5 bg-rose-100 text-crimson-700 font-extrabold rounded">${d.blood_group}</span>
-                <span class="text-slate-500 ml-2">${escapeHtml(d.district)}, ${escapeHtml(d.area)}</span>
+          listEl.innerHTML = donors.map((d, i) => {
+            const cleanPhone = (d.phone || '').replace(/[^0-9]/g, '');
+            const waNumber = cleanPhone.startsWith('88') ? cleanPhone : (cleanPhone.startsWith('0') ? '88' + cleanPhone : cleanPhone);
+            return `
+              <div class="p-3 rounded-xl border border-slate-100 bg-slate-50 flex items-center justify-between gap-3 text-xs">
+                <div>
+                  <div class="font-bold text-slate-900">${i + 1}. ${escapeHtml(d.name)} <span class="text-crimson-600 font-bold">(${escapeHtml(d.blood_group)})</span></div>
+                  <div class="text-slate-500 text-[11px]">${escapeHtml(d.district)}, ${escapeHtml(d.area)}</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <a href="tel:${escapeHtml(d.phone)}" class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold">📞 কল</a>
+                  <a href="https://wa.me/${waNumber}" target="_blank" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold">💬 WhatsApp</a>
+                </div>
               </div>
-              <div class="flex items-center gap-2">
-                <a href="tel:${d.phone}" class="px-2.5 py-1 rounded-lg bg-slate-900 text-white font-mono text-[11px] font-bold">কল</a>
-                <a href="https://wa.me/${cleanPhoneForWa(d.phone)}" target="_blank" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px]">WA</a>
-              </div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
 
-          donors.slice(0, 10).forEach((d, i) => {
-            shareMsg += `${i + 1}. ${d.name} (${d.district}) - ${d.phone}\n`;
-          });
-          shareMsg += `\nদ্রুত যোগাযোগ করে রোগীর জীবন রক্ষায় সহযোগিতা নিন।`;
+          shareText += donors.slice(0, 10).map((d, i) => `${i + 1}. ${d.name} (${d.district}) - ${d.phone}`).join('\\n');
+          shareText += '\\n\\nদ্রুত যোগাযোগ করে রোগীর জীবন রক্ষায় সহযোগিতা নিন।\\n- BRYBDPF ব্লাড ডোনার ম্যানেজমেন্ট';
         }
 
-        currentShareText = shareMsg;
-        const waNum = cleanPhoneForWa(req.contact_phone);
-        document.getElementById('btn-wa-share').href = `https://wa.me/${waNum}?text=${encodeURIComponent(shareMsg)}`;
+        currentShareText = shareText;
+        btnWa.href = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareText)}`;
       } catch (err) {
-        list.innerHTML = '<div class="text-center py-8 text-xs text-rose-500">ডাটা লোড ব্যর্থ হয়েছে</div>';
+        listEl.innerHTML = `<div class="p-4 text-center text-rose-500">ত্রুটি: ${escapeHtml(err.message)}</div>`;
       }
     }
 
@@ -629,87 +819,175 @@
     function copyShareText() {
       if (!currentShareText) return;
       navigator.clipboard.writeText(currentShareText).then(() => {
-        alert('ডোনার লিস্ট সফলভাবে ক্লিপবোর্ডে কপি হয়েছে!');
+        showToast('ডোনার তালিকা সফলভাবে ক্লিপবোর্ডে কপি করা হয়েছে!');
+      }).catch(() => {
+        alert('কপি ব্যর্থ হয়েছে');
       });
     }
 
-    function cleanPhoneForWa(phone) {
-      if (!phone) return '';
-      const c = phone.replace(/[^0-9]/g, '');
-      if (c.startsWith('88')) return c;
-      if (c.startsWith('0')) return '88' + c;
-      return c;
+    // Donors Management
+    function debounceSearch() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(fetchAdminDonors, 400);
     }
 
-    async function loadSettings() {
+    async function fetchAdminDonors() {
+      const token = localStorage.getItem('brybdpf_admin_token');
+      const bg = document.getElementById('admin-filter-bg').value;
+      const search = document.getElementById('admin-search-text').value;
+      const tbody = document.getElementById('admin-donors-tbody');
+
+      tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">ডোনার তালিকা লোড হচ্ছে...</td></tr>';
+
+      try {
+        const res = await fetch(`/api/admin/donors?blood_group=${encodeURIComponent(bg)}&search=${encodeURIComponent(search)}`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+
+        if (res.status === 401) {
+          handleLogout();
+          return;
+        }
+
+        const data = await parseApiResponse(res);
+        const donors = data.donors || [];
+
+        if (donors.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">কোনো ডোনার পাওয়া যায়নি।</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = donors.map(d => {
+          const isAvail = d.is_available === 1;
+          return `
+            <tr class="hover:bg-slate-50/70 transition">
+              <td class="p-3 font-bold text-slate-900">${escapeHtml(d.name)}</td>
+              <td class="p-3">
+                <span class="inline-block px-2 py-0.5 rounded-lg bg-rose-50 text-crimson-700 font-bold border border-rose-200">${escapeHtml(d.blood_group)}</span>
+              </td>
+              <td class="p-3 font-mono text-[11px]">
+                <a href="tel:${escapeHtml(d.phone)}" class="text-blue-600 hover:underline">${escapeHtml(d.phone)}</a>
+              </td>
+              <td class="p-3">${escapeHtml(d.district)}, ${escapeHtml(d.area)}</td>
+              <td class="p-3">${escapeHtml(d.age || '-')}</td>
+              <td class="p-3">
+                <button onclick="toggleDonor(${d.id})" class="px-2.5 py-1 rounded-full text-[10px] font-bold ${isAvail ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}">
+                  ${isAvail ? '● প্রস্তুত' : '○ অনুপুস্থিত'}
+                </button>
+              </td>
+              <td class="p-3 text-right">
+                <button onclick="deleteDonor(${d.id})" class="text-rose-500 hover:text-rose-700 font-bold text-xs p-1">মুছুন</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-rose-500">ত্রুটি: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    async function toggleDonor(id) {
       const token = localStorage.getItem('brybdpf_admin_token');
       try {
-        const res = await fetch('/api/admin/settings', { headers: { 'Authorization': 'Bearer ' + token } });
+        await fetch(`/api/admin/donors/${id}/toggle`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        showToast('ডোনার স্ট্যাটাস আপডেট হয়েছে');
+        fetchAdminDonors();
+      } catch (e) {
+        alert('আপডেট ব্যর্থ');
+      }
+    }
+
+    async function deleteDonor(id) {
+      if (!confirm('আপনি কি নিশ্চিতভাবে এই ডোনারকে মুছে ফেলতে চান?')) return;
+      const token = localStorage.getItem('brybdpf_admin_token');
+      try {
+        await fetch(`/api/admin/donors/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        showToast('ডোনার সফলভাবে মুছে ফেলা হয়েছে');
+        fetchAdminDonors();
+      } catch (e) {
+        alert('মুছতে ব্যর্থ হয়েছে');
+      }
+    }
+
+    // Settings Management
+    async function fetchAdminSettings() {
+      const token = localStorage.getItem('brybdpf_admin_token');
+      try {
+        const res = await fetch('/api/admin/settings', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
         const data = await parseApiResponse(res);
-        if (data.masked_token) {
-          document.getElementById('masked-token-note').textContent = `বর্তমান সক্রিয় টোকেন: ${data.masked_token}`;
-        }
         if (data.telegram_admin_uids) {
           document.getElementById('cfg-tg-uids').value = data.telegram_admin_uids;
         }
-      } catch (err) {
-        console.error(err);
-      }
+        if (data.telegram_bot_token_masked) {
+          document.getElementById('masked-token-note').textContent = 'বর্তমান টোকেন: ' + data.telegram_bot_token_masked;
+        }
+      } catch (e) {}
     }
 
     async function handleSaveSettings(e) {
       e.preventDefault();
       const token = localStorage.getItem('brybdpf_admin_token');
+      const tgToken = document.getElementById('cfg-tg-token').value;
+      const tgUids = document.getElementById('cfg-tg-uids').value;
       const alertBox = document.getElementById('settings-alert');
-
-      const payload = {
-        telegram_bot_token: document.getElementById('cfg-tg-token').value,
-        telegram_admin_uids: document.getElementById('cfg-tg-uids').value
-      };
 
       try {
         const res = await fetch('/api/admin/settings', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            telegram_bot_token: tgToken,
+            telegram_admin_uids: tgUids
+          })
         });
         const data = await parseApiResponse(res);
-
-        alertBox.className = 'p-3 rounded-xl text-xs font-semibold ' + (res.ok ? 'bg-emerald-50 text-emerald-800 block' : 'bg-rose-50 text-rose-800 block');
-        alertBox.textContent = data.message || data.error;
+        if (res.ok) {
+          alertBox.textContent = 'টেলিগ্রাম সেটিংস সফলভাবে সংরক্ষিত হয়েছে!';
+          alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-emerald-50 text-emerald-700 block';
+          fetchAdminSettings();
+        } else {
+          alertBox.textContent = data.error || 'সংরক্ষণ ব্যর্থ';
+          alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
+        }
       } catch (err) {
-        alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 block';
         alertBox.textContent = 'ত্রুটি: ' + err.message;
+        alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
       }
     }
 
     async function handleChangePassword(e) {
       e.preventDefault();
       const token = localStorage.getItem('brybdpf_admin_token');
-      const payload = {
-        current_password: document.getElementById('pwd-current').value,
-        new_password: document.getElementById('pwd-new').value
-      };
+      const current_password = document.getElementById('pwd-current').value;
+      const new_password = document.getElementById('pwd-new').value;
 
       try {
-        const res = await fetch('/api/admin/settings', {
+        const res = await fetch('/api/admin/change-password', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ current_password, new_password })
         });
         const data = await parseApiResponse(res);
         if (res.ok) {
-          alert('পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে!');
+          showToast('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
           document.getElementById('pwd-current').value = '';
           document.getElementById('pwd-new').value = '';
         } else {
-          alert('ত্রুটি: ' + (data.error || 'পাসওয়ার্ড পরিবর্তন ব্যর্থ হয়েছে'));
+          alert(data.error || 'পাসওয়ার্ড পরিবর্তন ব্যর্থ');
         }
       } catch (err) {
         alert('ত্রুটি: ' + err.message);
@@ -731,8 +1009,13 @@
     }
 
     function escapeHtml(str) {
-      if (!str) return '';
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     document.addEventListener('DOMContentLoaded', initAdmin);
