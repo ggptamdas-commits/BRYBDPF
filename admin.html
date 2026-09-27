@@ -111,7 +111,6 @@
           <span>সুরক্ষিত লগইন</span>
         </button>
 
-        <!-- Container for setup toggle: Will be COMPLETELY REMOVED from DOM if admin exists -->
         <div id="new-admin-setup-container" class="hidden text-center pt-3 border-t border-slate-100">
           <button type="button" onclick="showSetupView()" class="text-xs font-semibold text-crimson-600 hover:text-crimson-700 transition">
             নতুন অ্যাডমিন? এখানে ক্লিক করে প্রাথমিক সেটআপ সম্পন্ন করুন
@@ -126,7 +125,6 @@
     <!-- Responsive Header -->
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
       <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <!-- Top row: Logo, User, Logout -->
         <div class="h-14 sm:h-16 flex items-center justify-between gap-2">
           <div class="flex items-center gap-2.5 min-w-0">
             <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-crimson-600 flex items-center justify-center text-white shrink-0 shadow-sm">
@@ -148,7 +146,6 @@
           </div>
         </div>
 
-        <!-- Navigation Tabs Bar (Scrollable on small screens, never breaks or overflows) -->
         <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 border-t border-slate-100">
           <button onclick="switchTab('requests')" id="tab-btn-requests" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap bg-rose-50 text-crimson-700 transition flex items-center gap-1.5 shrink-0">
             <span>📋 ব্লাড রিকোয়েস্ট</span>
@@ -167,10 +164,7 @@
       </div>
     </header>
 
-    <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-7 w-full flex-1">
-      
-      <!-- Stats Cards -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div class="text-[11px] sm:text-xs text-slate-500 font-medium">মোট ডোনার</div>
@@ -190,7 +184,7 @@
         </div>
       </div>
 
-      <!-- TAB: BLOOD REQUESTS (Default Active Tab) -->
+      <!-- TAB: BLOOD REQUESTS -->
       <div id="tab-requests" class="space-y-4">
         <div class="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -202,7 +196,6 @@
               <p class="text-xs text-slate-500 mt-0.5">স্ট্যাটাস পরিবর্তন করুন এবং ১-ক্লিকে ডোনার তালিকা শেয়ার করুন।</p>
             </div>
             
-            <!-- Filters -->
             <div class="flex items-center gap-2">
               <label class="text-xs font-semibold text-slate-600 shrink-0">স্ট্যাটাস:</label>
               <select id="admin-filter-status" onchange="changeRequestStatusFilter()" class="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-crimson-500">
@@ -218,7 +211,6 @@
             </div>
           </div>
 
-          <!-- Table Container with Horizontal Scroll Protection -->
           <div class="overflow-x-auto mt-4 rounded-xl border border-slate-100">
             <table class="w-full text-left text-xs text-slate-600 min-w-[760px]">
               <thead class="bg-slate-50 text-slate-700 uppercase font-semibold border-b border-slate-200">
@@ -240,7 +232,6 @@
             </table>
           </div>
 
-          <!-- Pagination Controls (Max 10 per page) -->
           <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 mt-3 text-xs">
             <div class="text-slate-500" id="requests-pagination-info">
               পৃষ্ঠা ১ এর ১ (মোট ০ টি রিকোয়েস্ট)
@@ -321,12 +312,15 @@
               <label class="block text-xs font-semibold text-slate-700 mb-1">টেলিগ্রাম অ্যাডমিন ইউজার আইডি (UIDs - কমা দিয়ে একাধিক দিন)</label>
               <input type="text" id="cfg-tg-uids" placeholder="123456789, 987654321" class="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-mono outline-none">
             </div>
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-              <button type="button" onclick="testTelegramAlert()" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition">
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2.5">
+              <button type="button" onclick="setupTelegramWebhook()" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition">
+                🔗 ওয়েবহুক সক্রিয়
+              </button>
+              <button type="button" onclick="testTelegramAlert()" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition">
                 টেস্ট মেসেজ পাঠান
               </button>
-              <button type="submit" class="px-6 py-2.5 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-xs font-bold shadow transition">
-                সেটিংস সংরক্ষণ করুন
+              <button type="submit" class="px-5 py-2.5 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-xs font-bold shadow transition">
+                সংরক্ষণ করুন
               </button>
             </div>
           </form>
@@ -423,7 +417,6 @@
           return;
         } else {
           isSetupAllowed = false;
-          // Security: Permanently destroy setup container so no unauthorized person sees it
           const setupContainer = document.getElementById('new-admin-setup-container');
           if (setupContainer) setupContainer.remove();
         }
@@ -610,7 +603,6 @@
       if (tab === 'settings') fetchAdminSettings();
     }
 
-    // Requests Management with 10-day limit and 10 per page pagination
     function changeRequestStatusFilter() {
       currentReqStatus = document.getElementById('admin-filter-status').value;
       currentReqPage = 1;
@@ -652,7 +644,6 @@
         totalReqPages = data.total_pages || 1;
         currentReqPage = data.page || 1;
 
-        // Update Pagination Controls
         document.getElementById('requests-pagination-info').textContent = `বিগত ১০ দিনের মোট ${total} টি রিকোয়েস্ট (পৃষ্ঠা ${currentReqPage} এর ${totalReqPages})`;
         document.getElementById('req-current-page-num').textContent = currentReqPage;
         document.getElementById('req-prev-btn').disabled = (currentReqPage <= 1);
@@ -730,7 +721,6 @@
         const data = await parseApiResponse(res);
         if (res.ok) {
           showToast(`স্ট্যাটাস সফলভাবে '${newStatus}'-এ পরিবর্তিত হয়েছে!`);
-          // Refresh counts and data
           const authRes = await fetch('/api/admin/data', { headers: { 'Authorization': 'Bearer ' + token } });
           if (authRes.ok) {
             const counts = await parseApiResponse(authRes);
@@ -825,7 +815,6 @@
       });
     }
 
-    // Donors Management
     function debounceSearch() {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(fetchAdminDonors, 400);
@@ -915,7 +904,6 @@
       }
     }
 
-    // Settings Management
     async function fetchAdminSettings() {
       const token = localStorage.getItem('brybdpf_admin_token');
       try {
@@ -953,7 +941,7 @@
         });
         const data = await parseApiResponse(res);
         if (res.ok) {
-          alertBox.textContent = 'টেলিগ্রাম সেটিংস সফলভাবে সংরক্ষিত হয়েছে!';
+          alertBox.textContent = 'টেলিগ্রাম সেটিংস ও স্বয়ংক্রিয় ওয়েবহুক সফলভাবে সংরক্ষিত হয়েছে!';
           alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-emerald-50 text-emerald-700 block';
           fetchAdminSettings();
         } else {
@@ -963,6 +951,20 @@
       } catch (err) {
         alertBox.textContent = 'ত্রুটি: ' + err.message;
         alertBox.className = 'p-3 rounded-xl text-xs font-semibold mb-4 bg-rose-50 text-rose-700 block';
+      }
+    }
+
+    async function setupTelegramWebhook() {
+      const token = localStorage.getItem('brybdpf_admin_token');
+      try {
+        const res = await fetch('/api/telegram/setup-webhook', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await parseApiResponse(res);
+        alert(data.message || data.error);
+      } catch (err) {
+        alert('ওয়েবহুক সেটআপ ব্যর্থ: ' + err.message);
       }
     }
 
