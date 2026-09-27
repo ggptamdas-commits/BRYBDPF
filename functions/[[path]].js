@@ -269,21 +269,47 @@ async function getAuthenticatedAdmin(request, env) {
 
 const TELEGRAM_WEBHOOK_SECRET = "BRYBDPF_TG_SECURE_TOKEN_2026";
 
-async function tgSendMessage(token, chatId, text, inlineKeyboard = null, parseMode = "HTML") {
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function tgSendMessage(token, chatId, text, replyMarkup = null, parseMode = "HTML") {
   const payload = {
     chat_id: chatId,
     text,
-    parse_mode: parseMode,
     disable_web_page_preview: true
   };
-  if (inlineKeyboard) {
-    payload.reply_markup = { inline_keyboard: inlineKeyboard };
+  if (parseMode) payload.parse_mode = parseMode;
+  if (replyMarkup) {
+    if (Array.isArray(replyMarkup)) {
+      payload.reply_markup = { inline_keyboard: replyMarkup };
+    } else {
+      payload.reply_markup = replyMarkup;
+    }
   }
-  return fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  try {
+    let res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok && parseMode) {
+      delete payload.parse_mode;
+      payload.text = text.replace(/<[^>]*>/g, "");
+      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }
+    return res;
+  } catch (e) {
+    console.error("tgSendMessage error:", e);
+  }
 }
 
 async function tgEditMessage(token, chatId, messageId, text, inlineKeyboard = null, parseMode = "HTML") {
@@ -291,27 +317,59 @@ async function tgEditMessage(token, chatId, messageId, text, inlineKeyboard = nu
     chat_id: chatId,
     message_id: messageId,
     text,
-    parse_mode: parseMode,
     disable_web_page_preview: true
   };
+  if (parseMode) payload.parse_mode = parseMode;
   if (inlineKeyboard) {
-    payload.reply_markup = { inline_keyboard: inlineKeyboard };
+    if (Array.isArray(inlineKeyboard)) {
+      payload.reply_markup = { inline_keyboard: inlineKeyboard };
+    } else {
+      payload.reply_markup = inlineKeyboard;
+    }
   }
-  return fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  try {
+    let res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      delete payload.message_id;
+      if (parseMode) {
+        delete payload.parse_mode;
+        payload.text = text.replace(/<[^>]*>/g, "");
+      }
+      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }
+    return res;
+  } catch (e) {
+    console.error("tgEditMessage fallback to sendMessage:", e);
+    return tgSendMessage(token, chatId, text, inlineKeyboard, parseMode);
+  }
 }
 
 async function tgAnswerCallback(token, callbackQueryId, text = null) {
-  const payload = { callback_query_id: callbackQueryId };
-  if (text) payload.text = text;
-  return fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  if (!callbackQueryId || callbackQueryId.length < 5) return;
+  try {
+    const payload = { callback_query_id: callbackQueryId };
+    if (text) payload.text = text;
+    return await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {}
+}
+
+async function tgSendOrEdit(token, chatId, messageId, text, replyMarkup, isCallback) {
+  if (isCallback && messageId) {
+    return tgEditMessage(token, chatId, messageId, text, replyMarkup);
+  }
+  return tgSendMessage(token, chatId, text, replyMarkup);
 }
 
 function getMainAdminReplyKeyboard() {
@@ -344,8 +402,9 @@ function getMainAdminKeyboard() {
 }
 
 async function handleTelegramUpdate(update, env, ctx) {
+  let token = "";
+  let chatId = null;
   try {
-    let token = "";
     let adminUidsStr = "";
 
     await env.DB.prepare(
@@ -368,11 +427,143 @@ async function handleTelegramUpdate(update, env, ctx) {
 
     const allowedUids = (adminUidsStr || "").split(",").map(u => u.trim()).filter(Boolean);
 
-    // 1. Handle Callback Queries (Button Clicks)
+    // Reusable view handlers
+    const renderStats = async (targetChatId, targetMsgId, isCb) => {
+      const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
+        env.DB.prepare("SELECT count(*) as count FROM donors").first(),
+        env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
+        env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
+        env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending'").first()
+      ]);
+
+      const { results: groupStats } = await env.DB.prepare(
+        "SELECT blood_group, count(*) as count, sum(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as avail FROM donors GROUP BY blood_group"
+      ).all();
+
+      const grpMap = {};
+      (groupStats || []).forEach(g => {
+        grpMap[g.blood_group] = { total: g.count, avail: g.avail || 0 };
+      });
+
+      const groups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+      let grpBreakdown = "";
+      groups.forEach(g => {
+        const item = grpMap[g] || { total: 0, avail: 0 };
+        grpBreakdown += `• <b>${g}</b>: মোট ${item.total} জন (প্রস্তুত: ${item.avail} জন)\n`;
+      });
+
+      const total = donorsRes?.count || 0;
+      const avail = availRes?.count || 0;
+      const onHold = total - avail;
+
+      const text = `📊 <b>BRYBDPF সামগ্রিক পরিসংখ্যান ও ডোনার ডাটা</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👥 <b>মোট নিবন্ধিত ডোনার:</b> ${total} জন\n` +
+        `✅ <b>রক্তদানে প্রস্তুত:</b> ${avail} জন\n` +
+        `⏸️ <b>বিশ্রামে / আন-অ্যাক্টিভ:</b> ${onHold} জন\n` +
+        `📋 <b>মোট রক্তের রিকোয়েস্ট:</b> ${reqRes?.count || 0} টি\n` +
+        `⏳ <b>অপেক্ষমাণ (Pending):</b> ${pendingRes?.count || 0} টি\n\n` +
+        `🩸 <b>গ্রুপ ভিত্তিক ডোনার সংখ্যা:</b>\n` +
+        grpBreakdown;
+
+      const kb = [
+        [{ text: "🩸 গ্রুপভিত্তিক ডোনার তালিকা", callback_data: "cb:groups" }],
+        [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+      ];
+
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderGroups = async (targetChatId, targetMsgId, isCb) => {
+      const text = "🩸 <b>কোন গ্রুপের ডোনারদের তথ্য দেখতে চান নির্বাচন করুন:</b>";
+      const kb = [
+        [
+          { text: "A+", callback_data: "cb:grp:A+" },
+          { text: "A-", callback_data: "cb:grp:A-" },
+          { text: "B+", callback_data: "cb:grp:B+" },
+          { text: "B-", callback_data: "cb:grp:B-" }
+        ],
+        [
+          { text: "AB+", callback_data: "cb:grp:AB+" },
+          { text: "AB-", callback_data: "cb:grp:AB-" },
+          { text: "O+", callback_data: "cb:grp:O+" },
+          { text: "O-", callback_data: "cb:grp:O-" }
+        ],
+        [
+          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+        ]
+      ];
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderPending = async (targetChatId, targetMsgId, isCb) => {
+      const { results: pendingReqs } = await env.DB.prepare(
+        "SELECT * FROM blood_requests WHERE status = 'Pending' AND (created_at >= datetime('now', '-10 days') OR created_at IS NULL) ORDER BY id DESC LIMIT 5"
+      ).all();
+
+      if (!pendingReqs || pendingReqs.length === 0) {
+        const text = "✅ <b>বিগত ১০ দিনে কোনো অপেক্ষমাণ (Pending) রিকোয়েস্ট নেই।</b>\nসকল রিকোয়েস্ট সফলভাবে সম্পন্ন হয়েছে!";
+        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+        return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+      }
+
+      const r = pendingReqs[0];
+      const count = pendingReqs.length;
+      const text = `🚨 <b>অপেক্ষমাণ রিকোয়েস্ট (${count} টির মধ্যে ১নং):</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🩸 <b>গ্রুপ:</b> <code>${r.blood_group}</code> (${r.units || 1} ব্যাগ)\n` +
+        `👤 <b>রোগী:</b> ${r.patient_name}\n` +
+        `🏥 <b>হাসপাতাল:</b> ${r.hospital_name}, ${r.district}\n` +
+        `📍 <b>ঠিকানা:</b> ${r.location}\n` +
+        `📞 <b>আবেদনকারী:</b> ${r.requester_name || "স্বজন"} (<a href="tel:${r.contact_phone}">${r.contact_phone}</a>)\n` +
+        `⏰ <b>প্রয়োজন:</b> ${r.needed_by}\n` +
+        (r.note ? `📝 <b>নোট:</b> ${r.note}\n` : "") +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `নিচের বাটন চেপে ডোনার তালিকা বের করুন অথবা স্ট্যাটাস পরিবর্তন করুন:`;
+
+      const kb = [
+        [{ text: `🔍 ${r.blood_group} ডোনার ও WhatsApp লিংক`, callback_data: `cb:req_donors:${r.id}` }],
+        [
+          { text: "🤝 Matched", callback_data: `cb:req_status:${r.id}:Matched` },
+          { text: "✅ Fulfilled", callback_data: `cb:req_status:${r.id}:Fulfilled` },
+          { text: "❌ Closed", callback_data: `cb:req_status:${r.id}:Closed` }
+        ],
+        [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+      ];
+
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderMarkDonationPrompt = async (targetChatId, targetMsgId, isCb, adminUid) => {
+      await env.DB.prepare(
+        "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_donation_phone', datetime('now'))"
+      ).bind(adminUid).run();
+
+      const text = `💉 <b>রক্তদান সম্পন্ন (Donated) মার্ক করুন</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `যে ডোনার রক্তদান সম্পন্ন করেছেন, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান (যেমন: <code>017XXXXXXXX</code>):\n\n` +
+        `<i>ℹ️ নিয়ম: পুরুষদের ক্ষেত্রে স্বয়ংক্রিয়ভাবে ৯০ দিন (৩ মাস) এবং নারীদের ক্ষেত্রে ১২০ দিন (৪ মাস) ডোনার রেস্টে থাকবে এবং এই সময়ে তাকে প্রস্তুত তালিকায় দেখানো হবে না।</i>`;
+
+      const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderDonorSearchPrompt = async (targetChatId, targetMsgId, isCb, adminUid) => {
+      await env.DB.prepare(
+        "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_search_phone', datetime('now'))"
+      ).bind(adminUid).run();
+
+      const text = `🔍 <b>ডোনার অনুসন্ধান ও ব্যবস্থা গ্রহণ</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `যে ডোনারের বিস্তারিত তথ্য দেখতে চান অথবা যার বিরুদ্ধে কোনো অভিযোগ রয়েছে, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান:`;
+
+      const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    // 1. Handle Callback Queries (Inline Button Clicks)
     if (update.callback_query) {
       const cq = update.callback_query;
       const fromId = String(cq.from?.id || "");
-      const chatId = cq.message?.chat?.id;
+      chatId = cq.message?.chat?.id;
       const messageId = cq.message?.message_id;
       const data = cq.data || "";
 
@@ -386,77 +577,17 @@ async function handleTelegramUpdate(update, env, ctx) {
 
       if (data === "cb:menu") {
         const text = "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল</b> 🩸\n━━━━━━━━━━━━━━━━━━━━\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:";
-        await tgEditMessage(token, chatId, messageId, text, getMainAdminKeyboard());
+        await tgSendOrEdit(token, chatId, messageId, text, getMainAdminKeyboard(), true);
         return;
       }
 
       if (data === "cb:stats") {
-        const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
-          env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-          env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
-          env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
-          env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending'").first()
-        ]);
-
-        const { results: groupStats } = await env.DB.prepare(
-          "SELECT blood_group, count(*) as count, sum(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as avail FROM donors GROUP BY blood_group"
-        ).all();
-
-        const grpMap = {};
-        (groupStats || []).forEach(g => {
-          grpMap[g.blood_group] = { total: g.count, avail: g.avail || 0 };
-        });
-
-        const groups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-        let grpBreakdown = "";
-        groups.forEach(g => {
-          const item = grpMap[g] || { total: 0, avail: 0 };
-          grpBreakdown += `• <b>${g}</b>: মোট ${item.total} জন (প্রস্তুত: ${item.avail} জন)\n`;
-        });
-
-        const total = donorsRes?.count || 0;
-        const avail = availRes?.count || 0;
-        const onHold = total - avail;
-
-        const text = `📊 <b>BRYBDPF সামগ্রিক পরিসংখ্যান ও ডোনার ডাটা</b>\n` +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `👥 <b>মোট নিবন্ধিত ডোনার:</b> ${total} জন\n` +
-          `✅ <b>রক্তদানে প্রস্তুত:</b> ${avail} জন\n` +
-          `⏸️ <b>বিশ্রামে / আন-অ্যাক্টিভ:</b> ${onHold} জন\n` +
-          `📋 <b>মোট রক্তের রিকোয়েস্ট:</b> ${reqRes?.count || 0} টি\n` +
-          `⏳ <b>অপেক্ষমাণ (Pending):</b> ${pendingRes?.count || 0} টি\n\n` +
-          `🩸 <b>গ্রুপ ভিত্তিক ডোনার সংখ্যা:</b>\n` +
-          grpBreakdown;
-
-        const kb = [
-          [{ text: "🩸 গ্রুপভিত্তিক ডোনার তালিকা", callback_data: "cb:groups" }],
-          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-        ];
-
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await renderStats(chatId, messageId, true);
         return;
       }
 
       if (data === "cb:groups") {
-        const text = "🩸 <b>কোন গ্রুপের ডোনারদের তথ্য দেখতে চান নির্বাচন করুন:</b>";
-        const kb = [
-          [
-            { text: "A+", callback_data: "cb:grp:A+" },
-            { text: "A-", callback_data: "cb:grp:A-" },
-            { text: "B+", callback_data: "cb:grp:B+" },
-            { text: "B-", callback_data: "cb:grp:B-" }
-          ],
-          [
-            { text: "AB+", callback_data: "cb:grp:AB+" },
-            { text: "AB-", callback_data: "cb:grp:AB-" },
-            { text: "O+", callback_data: "cb:grp:O+" },
-            { text: "O-", callback_data: "cb:grp:O-" }
-          ],
-          [
-            { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
-          ]
-        ];
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await renderGroups(chatId, messageId, true);
         return;
       }
 
@@ -490,47 +621,12 @@ async function handleTelegramUpdate(update, env, ctx) {
           { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
         ]);
 
-        await tgEditMessage(token, chatId, messageId, donorText, inlineKb);
+        await tgSendOrEdit(token, chatId, messageId, donorText, inlineKb, true);
         return;
       }
 
       if (data === "cb:pending") {
-        const { results: pendingReqs } = await env.DB.prepare(
-          "SELECT * FROM blood_requests WHERE status = 'Pending' AND (created_at >= datetime('now', '-10 days') OR created_at IS NULL) ORDER BY id DESC LIMIT 5"
-        ).all();
-
-        if (!pendingReqs || pendingReqs.length === 0) {
-          const text = "✅ <b>বিগত ১০ দিনে কোনো অপেক্ষমাণ (Pending) রিকোয়েস্ট নেই।</b>\nসকল রিকোয়েস্ট সফলভাবে সম্পন্ন হয়েছে!";
-          const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-          await tgEditMessage(token, chatId, messageId, text, kb);
-          return;
-        }
-
-        const r = pendingReqs[0];
-        const count = pendingReqs.length;
-        const text = `🚨 <b>অপেক্ষমাণ রিকোয়েস্ট (${count} টির মধ্যে ১নং):</b>\n` +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `🩸 <b>গ্রুপ:</b> <code>${r.blood_group}</code> (${r.units || 1} ব্যাগ)\n` +
-          `👤 <b>রোগী:</b> ${r.patient_name}\n` +
-          `🏥 <b>হাসপাতাল:</b> ${r.hospital_name}, ${r.district}\n` +
-          `📍 <b>ঠিকানা:</b> ${r.location}\n` +
-          `📞 <b>আবেদনকারী:</b> ${r.requester_name || "স্বজন"} (<a href="tel:${r.contact_phone}">${r.contact_phone}</a>)\n` +
-          `⏰ <b>প্রয়োজন:</b> ${r.needed_by}\n` +
-          (r.note ? `📝 <b>নোট:</b> ${r.note}\n` : "") +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `নিচের বাটন চেপে ডোনার তালিকা বের করুন অথবা স্ট্যাটাস পরিবর্তন করুন:`;
-
-        const kb = [
-          [{ text: `🔍 ${r.blood_group} ডোনার ও WhatsApp লিংক`, callback_data: `cb:req_donors:${r.id}` }],
-          [
-            { text: "🤝 Matched", callback_data: `cb:req_status:${r.id}:Matched` },
-            { text: "✅ Fulfilled", callback_data: `cb:req_status:${r.id}:Fulfilled` },
-            { text: "❌ Closed", callback_data: `cb:req_status:${r.id}:Closed` }
-          ],
-          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-        ];
-
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await renderPending(chatId, messageId, true);
         return;
       }
 
@@ -547,7 +643,7 @@ async function handleTelegramUpdate(update, env, ctx) {
           [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
         ];
 
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
         return;
       }
 
@@ -601,34 +697,17 @@ async function handleTelegramUpdate(update, env, ctx) {
           { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
         ]);
 
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
         return;
       }
 
       if (data === "cb:mark_donation") {
-        await env.DB.prepare(
-          "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_donation_phone', datetime('now'))"
-        ).bind(fromId).run();
-
-        const text = `💉 <b>রক্তদান সম্পন্ন (Donated) মার্ক করুন</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
-          `যে ডোনার রক্তদান সম্পন্ন করেছেন, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান (যেমন: <code>017XXXXXXXX</code>):\n\n` +
-          `<i>ℹ️ নিয়ম: পুরুষদের ক্ষেত্রে স্বয়ংক্রিয়ভাবে ৯০ দিন (৩ মাস) এবং নারীদের ক্ষেত্রে ১২০ দিন (৪ মাস) ডোনার রেস্টে থাকবে এবং এই সময়ে তাকে প্রস্তুত তালিকায় দেখানো হবে না।</i>`;
-
-        const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await renderMarkDonationPrompt(chatId, messageId, true, fromId);
         return;
       }
 
       if (data === "cb:donor_search") {
-        await env.DB.prepare(
-          "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_search_phone', datetime('now'))"
-        ).bind(fromId).run();
-
-        const text = `🔍 <b>ডোনার অনুসন্ধান ও ব্যবস্থা গ্রহণ</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
-          `যে ডোনারের বিস্তারিত তথ্য দেখতে চান অথবা যার বিরুদ্ধে কোনো অভিযোগ রয়েছে, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান:`;
-
-        const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await renderDonorSearchPrompt(chatId, messageId, true, fromId);
         return;
       }
 
@@ -637,7 +716,7 @@ async function handleTelegramUpdate(update, env, ctx) {
         await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(donorId).run();
         const text = `🗑️ <b>ডোনার (ID #${donorId}) সফলভাবে ডাটাবেজ থেকে মুছে ফেলা হয়েছে!</b>`;
         const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
         return;
       }
 
@@ -652,7 +731,7 @@ async function handleTelegramUpdate(update, env, ctx) {
 
         const text = `⏸️ <b>ডোনার (ID #${donorId}) কে সফলভাবে ${days} দিনের জন্য সাময়িক সাসপেন্ড করা হয়েছে!</b>\nএই সময়ের মধ্যে কোনো অ্যালার্ট বা সার্চে তার তথ্য আসবে না।`;
         const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
         return;
       }
 
@@ -664,16 +743,16 @@ async function handleTelegramUpdate(update, env, ctx) {
 
         const text = `✅ <b>ডোনার (ID #${donorId}) সফলভাবে পুনরায় সক্রিয় (Active) করা হয়েছে!</b>`;
         const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        await tgEditMessage(token, chatId, messageId, text, kb);
+        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
         return;
       }
     }
 
-    // 2. Handle Text Messages
+    // 2. Handle Text Messages (Reply Keyboard or Typed)
     if (update.message) {
       const msg = update.message;
       const fromId = String(msg.from?.id || "");
-      const chatId = msg.chat?.id;
+      chatId = msg.chat?.id;
       const text = (msg.text || "").trim();
 
       // Anti-Hijack Authorization Check
@@ -682,13 +761,15 @@ async function handleTelegramUpdate(update, env, ctx) {
         return;
       }
 
+      // Check if admin is waiting for input
       const adminStateRecord = await env.DB.prepare(
         "SELECT state, data FROM bot_admin_states WHERE admin_uid = ?"
       ).bind(fromId).first();
 
       const currentState = adminStateRecord ? adminStateRecord.state : "";
 
-      if (text === "/start" || text === "/menu" || text === "মেনু" || text === "🔄 রিফ্রেশ মেনু") {
+      // Menu / Refresh
+      if (text === "/start" || text === "/menu" || text.includes("মেনু") || text.includes("রিফ্রেশ")) {
         await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
         const welcomeText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল প্যানেল</b> 🩸\n` +
           `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -709,41 +790,40 @@ async function handleTelegramUpdate(update, env, ctx) {
         return;
       }
 
-      if (text === "📊 পরিসংখ্যান") {
-        const cqFake = { id: "stats", from: msg.from, message: { chat: msg.chat, message_id: msg.message_id }, data: "cb:stats" };
-        update.callback_query = cqFake;
-        update.message = null;
-        return handleTelegramUpdate(update, env, ctx);
+      // Stats
+      if (text === "/stats" || text.includes("পরিসংখ্যান")) {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
+        await renderStats(chatId, null, false);
+        return;
       }
 
-      if (text === "🩸 গ্রুপভিত্তিক ডোনার") {
-        const cqFake = { id: "groups", from: msg.from, message: { chat: msg.chat, message_id: msg.message_id }, data: "cb:groups" };
-        update.callback_query = cqFake;
-        update.message = null;
-        return handleTelegramUpdate(update, env, ctx);
+      // Groups
+      if (text === "/groups" || text.includes("গ্রুপ")) {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
+        await renderGroups(chatId, null, false);
+        return;
       }
 
-      if (text === "📋 পেন্ডিং রিকোয়েস্ট") {
-        const cqFake = { id: "pending", from: msg.from, message: { chat: msg.chat, message_id: msg.message_id }, data: "cb:pending" };
-        update.callback_query = cqFake;
-        update.message = null;
-        return handleTelegramUpdate(update, env, ctx);
+      // Pending
+      if (text === "/pending" || text.includes("পেন্ডিং")) {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
+        await renderPending(chatId, null, false);
+        return;
       }
 
-      if (text === "💉 ডোনেশন মার্ক") {
-        const cqFake = { id: "mark_donation", from: msg.from, message: { chat: msg.chat, message_id: msg.message_id }, data: "cb:mark_donation" };
-        update.callback_query = cqFake;
-        update.message = null;
-        return handleTelegramUpdate(update, env, ctx);
+      // Mark Donation
+      if (text === "/donate" || text === "/donated" || text.includes("ডোনেশন") || text.includes("রক্তদান")) {
+        await renderMarkDonationPrompt(chatId, null, false, fromId);
+        return;
       }
 
-      if (text === "🔍 ডোনার সার্চ / অ্যাকশন") {
-        const cqFake = { id: "donor_search", from: msg.from, message: { chat: msg.chat, message_id: msg.message_id }, data: "cb:donor_search" };
-        update.callback_query = cqFake;
-        update.message = null;
-        return handleTelegramUpdate(update, env, ctx);
+      // Donor Search
+      if (text === "/search" || text.includes("সার্চ")) {
+        await renderDonorSearchPrompt(chatId, null, false, fromId);
+        return;
       }
 
+      // State: waiting_for_donation_phone
       if (currentState === "waiting_for_donation_phone") {
         const cleanPhone = text.replace(/[^0-9]/g, "");
         if (cleanPhone.length < 10) {
@@ -787,6 +867,7 @@ async function handleTelegramUpdate(update, env, ctx) {
         return;
       }
 
+      // State: waiting_for_search_phone
       if (currentState === "waiting_for_search_phone") {
         const cleanPhone = text.replace(/[^0-9]/g, "");
         const donor = await env.DB.prepare(
@@ -827,10 +908,16 @@ async function handleTelegramUpdate(update, env, ctx) {
         return;
       }
 
+      // Default fallback
       await tgSendMessage(token, chatId, "🩸 মেনু দেখতে নিচের বাটনে ক্লিক করুন অথবা /menu লিখুন:", getMainAdminKeyboard());
     }
   } catch (err) {
     console.error("Telegram bot error:", err);
+    try {
+      if (token && chatId) {
+        await tgSendMessage(token, chatId, "⚠️ কমান্ডটি প্রক্রিয়াকরণে সাময়িক সমস্যা হয়েছে। অনুগ্রহ করে /menu লিখে চেষ্টা করুন।");
+      }
+    } catch (_) {}
   }
 }
 
