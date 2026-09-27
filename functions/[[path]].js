@@ -20,69 +20,18 @@ function html(content, status = 200) {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Pragma": "no-cache",
-      "Expires": "0"
+      "Access-Control-Allow-Origin": "*",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin"
     }
   });
 }
 
 function getClientIP(request) {
-  return request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || request.headers.get("x-forwarded-for") || "127.0.0.1";
-}
-
-async function hashPassword(password, salt) {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits", "deriveKey"]
-  );
-  const derivedKey = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: enc.encode(salt),
-      iterations: 100000,
-      hash: "SHA-256"
-    },
-    keyMaterial,
-    256
-  );
-  return Array.from(new Uint8Array(derivedKey))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function generateRandomToken(bytes = 32) {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function sha256Hex(message) {
-  const enc = new TextEncoder();
-  const hash = await crypto.subtle.digest("SHA-256", enc.encode(message));
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-const CAPTCHA_SECRET = "BRYBDPF_SECURE_HMAC_SALT_2026";
-
-async function generateCaptcha() {
-  const num1 = Math.floor(Math.random() * 8) + 2;
-  const num2 = Math.floor(Math.random() * 8) + 1;
-  const answer = (num1 + num2).toString();
-  const timestamp = Date.now().toString();
-  const payload = `${answer}:${timestamp}`;
-  const sig = await sha256Hex(`${payload}:${CAPTCHA_SECRET}`);
-  const token = btoa(`${payload}:${sig}`);
-  return {
-    question: `${num1} + ${num2} = ?`,
-    token
-  };
+  return request.headers.get("CF-Connecting-IP") ||
+         request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+         "127.0.0.1";
 }
 
 function normalizeDigits(str) {
@@ -113,18 +62,121 @@ async function verifyCaptcha(token, userAnswer) {
   if (!token || !userAnswer) return false;
   try {
     const decoded = atob(token);
-    const parts = decoded.split(":");
-    if (parts.length !== 3) return false;
-    const [correctAnswer, timestamp, sig] = parts;
-    const timeDiff = Date.now() - parseInt(timestamp, 10);
-    if (isNaN(timeDiff) || timeDiff < 0 || timeDiff > 10 * 60 * 1000) return false;
-    const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${CAPTCHA_SECRET}`);
-    if (sig !== expectedSig) return false;
-    const normalizedUser = normalizeDigits(userAnswer).trim();
-    return normalizedUser === correctAnswer.trim();
-  } catch (e) {
+    const [num1Str, num2Str, tsStr] = decoded.split(":");
+    const num1 = parseInt(num1Str, 10);
+    const num2 = parseInt(num2Str, 10);
+    const ts = parseInt(tsStr, 10);
+    const expected = num1 + num2;
+    const cleanedAnswer = parseInt(normalizeDigits(userAnswer), 10);
+
+    if (isNaN(cleanedAnswer) || cleanedAnswer !== expected) {
+      return false;
+    }
+    const now = Date.now();
+    if (now - ts > 10 * 60 * 1000) {
+      return false;
+    }
+    return true;
+  } catch (err) {
     return false;
   }
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function tgSendMessage(token, chatId, text, replyMarkup = null, parseMode = "HTML") {
+  if (!token || !chatId) return;
+  const payload = {
+    chat_id: chatId,
+    text: text,
+    parse_mode: parseMode
+  };
+  if (replyMarkup) {
+    payload.reply_markup = replyMarkup;
+  }
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {}
+}
+
+async function tgEditMessage(token, chatId, messageId, text, replyMarkup = null, parseMode = "HTML") {
+  if (!token || !chatId || !messageId) return;
+  const payload = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: text,
+    parse_mode: parseMode
+  };
+  if (replyMarkup) {
+    payload.reply_markup = replyMarkup;
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+async function tgSendOrEdit(token, chatId, messageId, text, inlineKeyboard = null, parseModeHtml = true) {
+  const replyMarkup = inlineKeyboard ? { inline_keyboard: inlineKeyboard } : null;
+  const parseMode = parseModeHtml ? "HTML" : "Markdown";
+  if (messageId) {
+    const res = await tgEditMessage(token, chatId, messageId, text, replyMarkup, parseMode);
+    if (res && res.ok) return;
+  }
+  await tgSendMessage(token, chatId, text, replyMarkup, parseMode);
+}
+
+async function tgAnswerCallbackQuery(token, callbackQueryId, text = null, showAlert = false) {
+  if (!token || !callbackQueryId) return;
+  const payload = { callback_query_id: callbackQueryId };
+  if (text) {
+    payload.text = text;
+    payload.show_alert = showAlert;
+  }
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {}
+}
+
+function getMainAdminKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📊 পরিসংখ্যান", callback_data: "cb:stats" },
+        { text: "🩸 রক্তের অনুরোধসমূহ", callback_data: "cb:requests" }
+      ],
+      [
+        { text: "👥 ডোনার তালিকা", callback_data: "cb:groups" },
+        { text: "⏳ অপেক্ষমাণ অনুরোধ", callback_data: "cb:pending_reqs" }
+      ],
+      [
+        { text: "🔍 ডোনার খুঁজুন", callback_data: "cb:find_donor" },
+        { text: "ℹ️ সাহায্য ও তথ্য", callback_data: "cb:help" }
+      ]
+    ]
+  };
 }
 
 async function sendTelegramAlert(env, requestData, matchedDonors) {
@@ -158,45 +210,33 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const safeDist = escapeHtml(requestData.district);
     const safeThana = escapeHtml(requestData.thana);
     const safeLoc = escapeHtml(requestData.location);
-    const safeNeed = escapeHtml(requestData.needed_by);
-    const safeReq = escapeHtml(requestData.requester_name || "স্বজন");
-    const safeNote = escapeHtml(requestData.note);
-    const units = requestData.units || 1;
+    const safePhone = escapeHtml(requestData.contact_phone);
+    const safeRequester = escapeHtml(requestData.requester_name || requestData.patient_name);
+    const safeUnits = escapeHtml(requestData.units || 1);
+    const safeTime = escapeHtml(requestData.needed_by || "জরুরি");
+    const safeNote = escapeHtml(requestData.note || "");
 
-    // 1. Text to send to Requester containing list of matched donors
-    let shareToRequester = `🩸 *রক্তদাতাদের তালিকা — BRYBDPF* 🩸\n` +
-      `───────────────────────\n` +
-      `আসসালামু আলাইকুম,\n` +
-      `রোগীর জরুরি প্রয়োজনে *${requestData.blood_group}* রক্তদাতাদের তালিকা:\n\n`;
+    const promptForPatient =
+      `আসসালামু আলাইকুম, BRYBDPF থেকে আপনার রক্তের অনুরোধের প্রেক্ষিতে যোগাযোগ করা হচ্ছে।\n` +
+      `রোগী: ${requestData.patient_name}, রক্তের গ্রুপ: ${requestData.blood_group}, হাসপাতাল: ${requestData.hospital_name}।`;
+    const patientWaUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(promptForPatient)}`;
 
-    let donorItems = [];
+    let donorListHtml = "<i>কোনো তাৎক্ষণিক ডোনার পাওয়া যায়নি</i>";
 
     if (matchedDonors && matchedDonors.length > 0) {
-      shareToRequester += matchedDonors.slice(0, 10).map((d, i) => {
-        const tierTag = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
-        const loc = (d.area ? d.area + ", " : "") + (d.district || "রংপুর");
-        return `${i + 1}. *${d.name}* (${loc}) ${tierTag}\n   📞 কল করুন: *${d.phone}*`;
-      }).join("\n\n");
+      donorListHtml = matchedDonors.slice(0, 10).map((d, i) => {
+        const dCleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
+        const waNumber = dCleanPhone.startsWith("88") ? dCleanPhone : (dCleanPhone.startsWith("0") ? "88" + dCleanPhone : dCleanPhone);
 
-      shareToRequester += "\n\n───────────────────────\n💡 রক্তদাতাদের সাথে কথা বলে দ্রুত সময় ও স্থান নিশ্চিত করুন।\n🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।\n🌐 BRYBDPF মানবিক ব্লাড নেটওয়ার্ক";
-
-      donorItems = matchedDonors.slice(0, 12).map((d, i) => {
-        const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
-        const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-
-        const promptForDonor = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
-          `───────────────────────\n` +
-          `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
-          `এক মুমূর্ষু রোগীর জীবন রক্ষায় আপনার গ্রুপের (*${requestData.blood_group}*) রক্ত জরুরি প্রয়োজন।\n\n` +
-          `📋 *রোগী ও হাসপাতালের তথ্য:*\n` +
-          `• *রক্তের গ্রুপ:* *${requestData.blood_group}* (${units} ব্যাগ)\n` +
-          `• *রোগীর নাম:* ${requestData.patient_name}\n` +
+        const promptForDonor =
+          `*জরুরি রক্তের আবেদন (BRYBDPF)*\n\n` +
+          `আসসালামু আলাইকুম ${d.name} ভাই,\n` +
+          `একটি জরুরি রক্তের প্রয়োজনে আপনার সহযোগিতা কামনা করছি:\n\n` +
+          `• *রোগী:* ${requestData.patient_name}\n` +
+          `• *রক্তের গ্রুপ:* *${requestData.blood_group}*\n` +
+          `• *পরিমাণ:* ${requestData.units || 1} ব্যাগ\n` +
           `• *হাসপাতাল:* ${requestData.hospital_name}\n` +
-          `• *স্থান/থানা:* ${requestData.thana ? requestData.thana + ", " : ""}${requestData.district}\n` +
-          `• *ঠিকানা/ওয়ার্ড:* ${requestData.location}\n` +
-          `• *কখন লাগবে:* *${requestData.needed_by}*\n\n` +
-          `🤝 *যোগাযোগের তথ্য:*\n` +
-          `• *আবেদনকারী:* ${requestData.requester_name || "স্বজন"}\n` +
+          `• *ঠিকানা:* ${requestData.district}${requestData.location ? ", " + requestData.location : ""}\n` +
           `• *মোবাইল:* *${requestData.contact_phone}*\n` +
           (requestData.note ? `• *নোট:* ${requestData.note}\n` : "") +
           `───────────────────────\n` +
@@ -209,449 +249,361 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
 
         return `${i + 1}. <b>${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
           `   📞 <code>${d.phone}</code> ➔ <a href="${donorWaUrl}">💬 <b>WhatsApp</b></a>`;
-      });
-    } else {
-      shareToRequester += "⚠️ এই মুহূর্তে কোনো প্রস্তুত ডোনার পাওয়া যায়নি।";
+      }).join("\n\n");
     }
 
-    const waShareUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareToRequester)}`;
-
-    const donorListText = donorItems.length > 0
-      ? donorItems.join("\n\n")
-      : "⚠️ এই মুহূর্তে প্রস্তুত কোনো ডোনার পাওয়া যায়নি।";
-
-    const messageHtml = `🚨 <b>জরুরি রক্তের আবেদন — BRYBDPF</b> 🚨\n` +
-      `────────────────────────────\n` +
-      `🩸 <b>প্রয়োজনীয় রক্ত:</b> <code>${safeBg}</code> (${units} ব্যাগ)\n` +
-      `👤 <b>রোগীর নাম:</b> ${safePatient}\n` +
-      `🏥 <b>হাসপাতাল:</b> ${safeHosp}, ${safeDist}\n` +
-      (safeThana ? `📍 <b>থানা/উপজেলা:</b> ${safeThana}\n` : "") +
-      `📍 <b>ঠিকানা/ওয়ার্ড:</b> ${safeLoc}\n` +
-      `⏰ <b>প্রয়োজনের সময়:</b> ${safeNeed}\n` +
-      `────────────────────────────\n` +
-      `🤝 <b>আবেদনকারী:</b> ${safeReq} (📞 <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>)\n` +
+    const message =
+      `🚨 <b>নতুন রক্তের অনুরোধ! (BRYBDPF)</b> 🚨\n\n` +
+      `👤 <b>রোগী:</b> ${safePatient}\n` +
+      `🩸 <b>গ্রুপ:</b> <b>${safeBg}</b> (${safeUnits} ব্যাগ)\n` +
+      `🏥 <b>হাসপাতাল:</b> ${safeHosp}\n` +
+      `📍 <b>এলাকা:</b> ${safeDist}${safeThana ? " > " + safeThana : ""}${safeLoc ? ", " + safeLoc : ""}\n` +
+      `⏱️ <b>সময়:</b> ${safeTime}\n` +
+      `📞 <b>আবেদনকারী:</b> ${safeRequester} (<code>${safePhone}</code>)\n` +
       (safeNote ? `📝 <b>নোট:</b> ${safeNote}\n` : "") +
-      `────────────────────────────\n` +
-      `📲 <b>রোগীর স্বজনকে সকল ডোনারের তালিকা পাঠান:</b>\n` +
-      `👉 <a href="${waShareUrl}"><b>WhatsApp-এ রোগীর স্বজনকে পাঠান</b></a>\n` +
-      `────────────────────────────\n` +
-      `📋 <b>উপযুক্ত প্রস্তুত ডোনারগণ (${safeBg}):</b>\n\n` +
-      donorListText;
-
-    const inlineButtons = [
-      [{ text: "📲 রোগীর স্বজনকে ডোনার লিস্ট পাঠান (WhatsApp)", url: waShareUrl }]
-    ];
+      `\n🔗 <a href="${patientWaUrl}">💬 <b>রোগীর সাথে সরাসরি WhatsApp-এ চ্যাট করুন</b></a>\n` +
+      `───────────────────────\n` +
+      `🎯 <b>স্মার্ট নিকটবর্তী ডোনারদের তালিকা:</b>\n\n` +
+      donorListHtml;
 
     for (const uid of uids) {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: uid,
-          text: messageHtml,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-          reply_markup: { inline_keyboard: inlineButtons }
-        })
-      });
+      await tgSendMessage(token, uid, message);
     }
-  } catch (err) {
-    console.error("Error sending Telegram alert:", err);
-  }
+  } catch (err) {}
 }
 
 async function getAuthenticatedAdmin(request, env) {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+  const token = authHeader.substring(7).trim();
+  if (!token) return null;
+
   try {
-    const authHeader = request.headers.get("Authorization");
-    let token = "";
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7).trim();
-    } else {
-      const cookie = request.headers.get("Cookie") || "";
-      const match = cookie.match(/brybdpf_session=([a-f0-9]+)/);
-      if (match) token = match[1];
+    let session = await env.DB.prepare(
+      "SELECT user_id, expires_at FROM admin_sessions WHERE token = ?"
+    ).bind(token).first();
+
+    if (!session) {
+      session = await env.DB.prepare(
+        "SELECT user_id, expires_at FROM sessions WHERE token = ?"
+      ).bind(token).first();
     }
 
-    if (!token) return null;
+    if (!session) return null;
 
-    // Check sessions table first
-    try {
-      const s = await env.DB.prepare(
-        "SELECT token, admin_email, expires_at FROM sessions WHERE token = ? AND expires_at > datetime('now')"
-      ).bind(token).first();
-      if (s) {
-        const admin = await env.DB.prepare(
-          "SELECT id, email, role FROM admins WHERE LOWER(email) = LOWER(?)"
-        ).bind(s.admin_email).first();
-        if (admin) {
-          admin.admin_email = admin.email;
-          return admin;
-        }
-        return null;
-      }
-    } catch(e) {}
+    if (new Date(session.expires_at) < new Date()) {
+      return null;
+    }
 
-    // Check admin_sessions table
-    try {
-      const s2 = await env.DB.prepare(
-        "SELECT * FROM admin_sessions WHERE token = ? AND expires_at > datetime('now')"
-      ).bind(token).first();
-      if (s2) {
-        const admin = await env.DB.prepare(
-          "SELECT id, email, role FROM admins WHERE id = ?"
-        ).bind(s2.admin_id).first();
-        if (admin) {
-          admin.admin_email = admin.email;
-          return admin;
-        }
-      }
-    } catch(e) {}
+    let user = await env.DB.prepare(
+      "SELECT id, username, email, role FROM admin_users WHERE id = ?"
+    ).bind(session.user_id).first();
 
-    return null;
+    if (!user) {
+      user = await env.DB.prepare(
+        "SELECT id, username, email, role FROM users WHERE id = ?"
+      ).bind(session.user_id).first();
+    }
+
+    return user || null;
   } catch (err) {
-    console.error("Auth admin error:", err);
     return null;
   }
 }
 
-const TELEGRAM_WEBHOOK_SECRET = "BRYBDPF_TG_SECURE_TOKEN_2026";
-
-function escapeHtml(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-async function tgSendMessage(token, chatId, text, replyMarkup = null, parseMode = "HTML") {
-  const payload = {
-    chat_id: chatId,
-    text,
-    disable_web_page_preview: true
-  };
-  if (parseMode) payload.parse_mode = parseMode;
-  if (replyMarkup) {
-    if (Array.isArray(replyMarkup)) {
-      payload.reply_markup = { inline_keyboard: replyMarkup };
-    } else {
-      payload.reply_markup = replyMarkup;
-    }
-  }
+async function handleTelegramWebhook(request, env) {
   try {
-    let res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok && parseMode) {
-      delete payload.parse_mode;
-      payload.text = text.replace(/<[^>]*>/g, "");
-      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    }
-    return res;
-  } catch (e) {
-    console.error("tgSendMessage error:", e);
-  }
-}
-
-async function tgEditMessage(token, chatId, messageId, text, inlineKeyboard = null, parseMode = "HTML") {
-  const payload = {
-    chat_id: chatId,
-    message_id: messageId,
-    text,
-    disable_web_page_preview: true
-  };
-  if (parseMode) payload.parse_mode = parseMode;
-  if (inlineKeyboard) {
-    if (Array.isArray(inlineKeyboard)) {
-      payload.reply_markup = { inline_keyboard: inlineKeyboard };
-    } else {
-      payload.reply_markup = inlineKeyboard;
-    }
-  }
-  try {
-    let res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      delete payload.message_id;
-      if (parseMode) {
-        delete payload.parse_mode;
-        payload.text = text.replace(/<[^>]*>/g, "");
-      }
-      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    }
-    return res;
-  } catch (e) {
-    console.error("tgEditMessage fallback to sendMessage:", e);
-    return tgSendMessage(token, chatId, text, inlineKeyboard, parseMode);
-  }
-}
-
-async function tgAnswerCallback(token, callbackQueryId, text = null) {
-  if (!callbackQueryId || callbackQueryId.length < 5) return;
-  try {
-    const payload = { callback_query_id: callbackQueryId };
-    if (text) payload.text = text;
-    return await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-  } catch (e) {}
-}
-
-async function tgSendOrEdit(token, chatId, messageId, text, replyMarkup, isCallback) {
-  if (isCallback && messageId) {
-    return tgEditMessage(token, chatId, messageId, text, replyMarkup);
-  }
-  return tgSendMessage(token, chatId, text, replyMarkup);
-}
-
-function getMainAdminReplyKeyboard() {
-  return {
-    keyboard: [
-      [{ text: "📊 পরিসংখ্যান" }, { text: "🩸 গ্রুপভিত্তিক ডোনার" }],
-      [{ text: "📋 পেন্ডিং রিকোয়েস্ট" }, { text: "💉 ডোনেশন মার্ক" }],
-      [{ text: "🔍 ডোনার সার্চ / অ্যাকশন" }, { text: "🔄 রিফ্রেশ মেনু" }]
-    ],
-    resize_keyboard: true,
-    one_time_keyboard: false
-  };
-}
-
-function getMainAdminKeyboard() {
-  return [
-    [
-      { text: "📊 রিয়েলটাইম পরিসংখ্যান", callback_data: "cb:stats" },
-      { text: "🩸 গ্রুপভিত্তিক ডোনার", callback_data: "cb:groups" }
-    ],
-    [
-      { text: "📋 পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" },
-      { text: "💉 ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }
-    ],
-    [
-      { text: "🔍 ডোনার সার্চ / অ্যাকশন", callback_data: "cb:donor_search" },
-      { text: "🔄 রিফ্রেশ", callback_data: "cb:menu" }
-    ]
-  ];
-}
-
-async function handleTelegramUpdate(update, env, ctx) {
-  let token = "";
-  let chatId = null;
-  try {
+    let token = "";
     let adminUidsStr = "";
 
-    await env.DB.prepare(
-      "CREATE TABLE IF NOT EXISTS bot_admin_states (admin_uid TEXT PRIMARY KEY, state TEXT, data TEXT, updated_at TEXT DEFAULT (datetime('now')))"
-    ).run();
-
     const { results: settings } = await env.DB.prepare(
-      "SELECT key, value FROM admin_settings WHERE key IN ('telegram_bot_token', 'telegram_admin_uids')"
+      "SELECT key, value FROM admin_settings WHERE key IN ('telegram_bot_token', 'telegram_admin_uids', 'telegram_webhook_secret')"
     ).all();
 
+    let webhookSecret = "";
     for (const s of settings) {
       if (s.key === "telegram_bot_token") token = s.value;
       if (s.key === "telegram_admin_uids") adminUidsStr = s.value;
+      if (s.key === "telegram_webhook_secret") webhookSecret = s.value;
     }
 
     if (!token && env.TELEGRAM_BOT_TOKEN) token = env.TELEGRAM_BOT_TOKEN;
     if (!adminUidsStr && env.TELEGRAM_ADMIN_IDS) adminUidsStr = env.TELEGRAM_ADMIN_IDS;
 
-    if (!token) return;
+    if (webhookSecret) {
+      const incomingSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+      if (incomingSecret !== webhookSecret) {
+        return json({ ok: false, error: "Unauthorized webhook request" }, 403);
+      }
+    }
 
-    const allowedUids = (adminUidsStr || "").split(",").map(u => u.trim()).filter(Boolean);
+    if (!token) return json({ ok: true });
 
-    // Reusable view handlers
-    const renderStats = async (targetChatId, targetMsgId, isCb) => {
-      const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
-        env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-        env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
-        env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
-        env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending'").first()
-      ]);
+    const update = await request.json();
+    const adminUids = (adminUidsStr || "").split(",").map(u => u.trim()).filter(Boolean);
 
-      const { results: groupStats } = await env.DB.prepare(
-        "SELECT blood_group, count(*) as count, sum(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as avail FROM donors GROUP BY blood_group"
-      ).all();
+    if (update.message) {
+      const msg = update.message;
+      const chatId = msg.chat?.id;
+      const userId = String(msg.from?.id || "");
+      const text = (msg.text || "").trim();
 
-      const grpMap = {};
-      (groupStats || []).forEach(g => {
-        grpMap[g.blood_group] = { total: g.count, avail: g.avail || 0 };
-      });
+      const isAdmin = adminUids.includes(userId);
 
-      const groups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-      let grpBreakdown = "";
-      groups.forEach(g => {
-        const item = grpMap[g] || { total: 0, avail: 0 };
-        grpBreakdown += `• <b>${g}</b>: মোট ${item.total} জন (প্রস্তুত: ${item.avail} জন)\n`;
-      });
+      if (text === "/start" || text === "/help" || text === "/menu") {
+        let welcomeText = `🩸 <b>BRYBDPF ব্লাড ডোনার ম্যানেজমেন্ট বটের স্বাগতম!</b>\n\n` +
+          `এটি বাংলাদেশ রেড ইয়ুথ ব্লাড ডোনার্স প্ল্যাটফর্মের অফিসিয়াল অটোমেশন বট।`;
 
-      const total = donorsRes?.count || 0;
-      const avail = availRes?.count || 0;
-      const onHold = total - avail;
-
-      const text = `📊 <b>BRYBDPF সামগ্রিক পরিসংখ্যান ও ডোনার ডাটা</b>\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `👥 <b>মোট নিবন্ধিত ডোনার:</b> ${total} জন\n` +
-        `✅ <b>রক্তদানে প্রস্তুত:</b> ${avail} জন\n` +
-        `⏸️ <b>বিশ্রামে / আন-অ্যাক্টিভ:</b> ${onHold} জন\n` +
-        `📋 <b>মোট রক্তের রিকোয়েস্ট:</b> ${reqRes?.count || 0} টি\n` +
-        `⏳ <b>অপেক্ষমাণ (Pending):</b> ${pendingRes?.count || 0} টি\n\n` +
-        `🩸 <b>গ্রুপ ভিত্তিক ডোনার সংখ্যা:</b>\n` +
-        grpBreakdown;
-
-      const kb = [
-        [{ text: "🩸 গ্রুপভিত্তিক ডোনার তালিকা", callback_data: "cb:groups" }],
-        [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-      ];
-
-      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
-    };
-
-    const renderGroups = async (targetChatId, targetMsgId, isCb) => {
-      const text = "🩸 <b>কোন গ্রুপের ডোনারদের তথ্য দেখতে চান নির্বাচন করুন:</b>";
-      const kb = [
-        [
-          { text: "A+", callback_data: "cb:grp:A+" },
-          { text: "A-", callback_data: "cb:grp:A-" },
-          { text: "B+", callback_data: "cb:grp:B+" },
-          { text: "B-", callback_data: "cb:grp:B-" }
-        ],
-        [
-          { text: "AB+", callback_data: "cb:grp:AB+" },
-          { text: "AB-", callback_data: "cb:grp:AB-" },
-          { text: "O+", callback_data: "cb:grp:O+" },
-          { text: "O-", callback_data: "cb:grp:O-" }
-        ],
-        [
-          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
-        ]
-      ];
-      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
-    };
-
-    const renderPending = async (targetChatId, targetMsgId, isCb) => {
-      const { results: pendingReqs } = await env.DB.prepare(
-        "SELECT * FROM blood_requests WHERE status = 'Pending' AND (created_at >= datetime('now', '-10 days') OR created_at IS NULL) ORDER BY id DESC LIMIT 5"
-      ).all();
-
-      if (!pendingReqs || pendingReqs.length === 0) {
-        const text = "✅ <b>বিগত ১০ দিনে কোনো অপেক্ষমাণ (Pending) রিকোয়েস্ট নেই।</b>\nসকল রিকোয়েস্ট সফলভাবে সম্পন্ন হয়েছে!";
-        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+        if (isAdmin) {
+          welcomeText += `\n\n✅ <b>আপনার অ্যাডমিন এক্সেস অনুমোদিত।</b> নিচের বাটনগুলো চেপে সহজেই যেকোনো অপশন সিলেক্ট করুন:`;
+          await tgSendMessage(token, chatId, welcomeText, getMainAdminKeyboard());
+        } else {
+          welcomeText += `\n\nℹ️ <i>আপনার টেলিগ্রাম আইডি:</i> <code>${userId}</code>\n` +
+            `আপনি যদি অ্যাডমিন হয়ে থাকেন তবে ওয়েবসাইটের অ্যাডমিন প্যানেল (সেটিংস) এ আপনার এই আইডিটি যুক্ত করুন।`;
+          const guestKb = {
+            inline_keyboard: [
+              [{ text: "📊 বর্তমান পরিসংখ্যান", callback_data: "cb:stats" }],
+              [{ text: "🌐 আমাদের ওয়েবসাইট ভিজিট করুন", url: "https://brybdpf.pages.dev" }]
+            ]
+          };
+          await tgSendMessage(token, chatId, welcomeText, guestKb);
+        }
+        return json({ ok: true });
       }
 
-      const r = pendingReqs[0];
-      const count = pendingReqs.length;
-      const text = `🚨 <b>অপেক্ষমাণ রিকোয়েস্ট (${count} টির মধ্যে ১নং):</b>\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🩸 <b>গ্রুপ:</b> <code>${r.blood_group}</code> (${r.units || 1} ব্যাগ)\n` +
-        `👤 <b>রোগী:</b> ${r.patient_name}\n` +
-        `🏥 <b>হাসপাতাল:</b> ${r.hospital_name}, ${r.district}\n` +
-        `📍 <b>ঠিকানা:</b> ${r.location}\n` +
-        `📞 <b>আবেদনকারী:</b> ${r.requester_name || "স্বজন"} (<a href="tel:${r.contact_phone}">${r.contact_phone}</a>)\n` +
-        `⏰ <b>প্রয়োজন:</b> ${r.needed_by}\n` +
-        (r.note ? `📝 <b>নোট:</b> ${r.note}\n` : "") +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `নিচের বাটন চেপে ডোনার তালিকা বের করুন অথবা স্ট্যাটাস পরিবর্তন করুন:`;
+      if (text.startsWith("/search ") || text.startsWith("/find ")) {
+        if (!isAdmin) {
+          await tgSendMessage(token, chatId, "❌ এই কমান্ডটি ব্যবহারের অনুমতি আপনার নেই।");
+          return json({ ok: true });
+        }
+        const query = text.replace(/^\/(search|find)\s+/, "").trim();
+        const donorsRes = await env.DB.prepare(
+          "SELECT name, blood_group, district, thana, area, phone, total_donations FROM donors WHERE (blood_group = ? OR district LIKE ? OR thana LIKE ? OR phone LIKE ?) AND is_active = 1 LIMIT 10"
+        ).bind(query.toUpperCase(), `%${query}%`, `%${query}%`, `%${query}%`).all();
 
-      const kb = [
-        [{ text: `🔍 ${r.blood_group} ডোনার ও WhatsApp লিংক`, callback_data: `cb:req_donors:${r.id}` }],
-        [
-          { text: "🤝 Matched", callback_data: `cb:req_status:${r.id}:Matched` },
-          { text: "✅ Fulfilled", callback_data: `cb:req_status:${r.id}:Fulfilled` },
-          { text: "❌ Closed", callback_data: `cb:req_status:${r.id}:Closed` }
-        ],
-        [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-      ];
+        const donors = donorsRes.results || [];
+        if (donors.length === 0) {
+          await tgSendMessage(token, chatId, `🔍 <b>"${escapeHtml(query)}"</b> এর জন্য কোনো ডোনার পাওয়া যায়নি।`);
+        } else {
+          let donorMsg = `🔍 <b>"${escapeHtml(query)}"</b> এর ফলাফল (${donors.length} জন ডোনার):\n\n`;
+          donorMsg += donors.map((d, i) => {
+            const dCleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
+            const waNumber = dCleanPhone.startsWith("88") ? dCleanPhone : (dCleanPhone.startsWith("0") ? "88" + dCleanPhone : dCleanPhone);
+            const waMsg = `আসসালামু আলাইকুম ${d.name} ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে।`;
+            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`;
+            const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
 
-      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
-    };
+            return `<b>${i + 1}. ${escapeHtml(d.name)}</b> [<b>${d.blood_group}</b>] (${loc})\n` +
+              `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
+          }).join("\n\n");
+          await tgSendMessage(token, chatId, donorMsg);
+        }
+        return json({ ok: true });
+      }
 
-    const renderMarkDonationPrompt = async (targetChatId, targetMsgId, isCb, adminUid) => {
-      await env.DB.prepare(
-        "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_donation_phone', datetime('now'))"
-      ).bind(adminUid).run();
+      if (text === "/stats") {
+        const stats = await getPlatformStats(env);
+        const statsMsg = `📊 <b>BRYBDPF ব্লাড প্ল্যাটফর্ম লাইভ পরিসংখ্যান</b> 📊\n\n` +
+          `👥 <b>মোট রক্তদাতা:</b> ${stats.totalDonors} জন\n` +
+          `🩸 <b>মোট রক্তের অনুরোধ:</b> ${stats.totalRequests} টি\n` +
+          `✅ <b>সফল রক্তদান:</b> ${stats.completedRequests} টি\n` +
+          `⏳ <b>চলমান/অপেক্ষমাণ অনুরোধ:</b> ${stats.pendingRequests} টি\n\n` +
+          `<i>আপডেট সময়: ${new Date().toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}</i>`;
+        await tgSendMessage(token, chatId, statsMsg, isAdmin ? getMainAdminKeyboard() : null);
+        return json({ ok: true });
+      }
+    }
 
-      const text = `💉 <b>রক্তদান সম্পন্ন (Donated) মার্ক করুন</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
-        `যে ডোনার রক্তদান সম্পন্ন করেছেন, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান (যেমন: <code>017XXXXXXXX</code>):\n\n` +
-        `<i>ℹ️ নিয়ম: পুরুষদের ক্ষেত্রে স্বয়ংক্রিয়ভাবে ৯০ দিন (৩ মাস) এবং নারীদের ক্ষেত্রে ১২০ দিন (৪ মাস) ডোনার রেস্টে থাকবে এবং এই সময়ে তাকে প্রস্তুত তালিকায় দেখানো হবে না।</i>`;
-
-      const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
-      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
-    };
-
-    const renderDonorSearchPrompt = async (targetChatId, targetMsgId, isCb, adminUid) => {
-      await env.DB.prepare(
-        "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_search_phone', datetime('now'))"
-      ).bind(adminUid).run();
-
-      const text = `🔍 <b>ডোনার অনুসন্ধান ও ব্যবস্থা গ্রহণ</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
-        `যে ডোনারের বিস্তারিত তথ্য দেখতে চান অথবা যার বিরুদ্ধে কোনো অভিযোগ রয়েছে, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান:`;
-
-      const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
-      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
-    };
-
-    // 1. Handle Callback Queries (Inline Button Clicks)
     if (update.callback_query) {
-      const cq = update.callback_query;
-      const fromId = String(cq.from?.id || "");
-      chatId = cq.message?.chat?.id;
-      const messageId = cq.message?.message_id;
-      const data = cq.data || "";
+      const cb = update.callback_query;
+      const callbackId = cb.id;
+      const data = cb.data || "";
+      const chatId = cb.message?.chat?.id;
+      const messageId = cb.message?.message_id;
+      const userId = String(cb.from?.id || "");
+      const isAdmin = adminUids.includes(userId);
 
-      // Anti-Hijack Authorization Check
-      if (allowedUids.length > 0 && !allowedUids.includes(fromId)) {
-        await tgAnswerCallback(token, cq.id, "⛔ অননুমোদিত অ্যাক্সেস। আপনি অ্যাডমিন নন।");
-        return;
-      }
-
-      await tgAnswerCallback(token, cq.id);
+      await tgAnswerCallbackQuery(token, callbackId);
 
       if (data === "cb:menu") {
-        const text = "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল</b> 🩸\n━━━━━━━━━━━━━━━━━━━━\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:";
-        await tgSendOrEdit(token, chatId, messageId, text, getMainAdminKeyboard(), true);
-        return;
+        let menuText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল বাটন</b> 🩸\nনিচের বাটনগুলো চেপে সরাসরি অ্যাক্সেস করুন:`;
+        await tgSendOrEdit(token, chatId, messageId, menuText, getMainAdminKeyboard().inline_keyboard, true);
+        return json({ ok: true });
       }
 
       if (data === "cb:stats") {
-        await renderStats(chatId, messageId, true);
-        return;
+        const stats = await getPlatformStats(env);
+        const statsMsg = `📊 <b>BRYBDPF প্ল্যাটফর্ম পরিসংখ্যান</b> 📊\n\n` +
+          `👥 <b>মোট রক্তদাতা:</b> ${stats.totalDonors} জন\n` +
+          `🩸 <b>মোট রক্তের অনুরোধ:</b> ${stats.totalRequests} টি\n` +
+          `✅ <b>সফল রক্তদান:</b> ${stats.completedRequests} টি\n` +
+          `⏳ <b>চলমান/অপেক্ষমাণ অনুরোধ:</b> ${stats.pendingRequests} টি\n\n` +
+          `<i>আপডেট: ${new Date().toLocaleString("bn-BD", { timeZone: "Asia/Dhaka" })}</i>`;
+
+        const kb = [
+          [{ text: "🔄 রিফ্রেশ", callback_data: "cb:stats" }],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ];
+        await tgSendOrEdit(token, chatId, messageId, statsMsg, kb, true);
+        return json({ ok: true });
+      }
+
+      if (data === "cb:requests" || data === "cb:pending_reqs") {
+        if (!isAdmin) {
+          await tgSendOrEdit(token, chatId, messageId, "❌ এই তথ্য দেখার অনুমতি আপনার নেই।", null, true);
+          return json({ ok: true });
+        }
+
+        const isPendingOnly = data === "cb:pending_reqs";
+        const sql = isPendingOnly
+          ? "SELECT id, patient_name, blood_group, units, hospital_name, district, thana, contact_phone, status, needed_by, created_at FROM requests WHERE status = 'pending' ORDER BY id DESC LIMIT 5"
+          : "SELECT id, patient_name, blood_group, units, hospital_name, district, thana, contact_phone, status, needed_by, created_at FROM requests ORDER BY id DESC LIMIT 5";
+
+        const { results: reqs } = await env.DB.prepare(sql).all();
+
+        if (!reqs || reqs.length === 0) {
+          const emptyMsg = isPendingOnly
+            ? "✅ <b>বর্তমানে কোনো অপেক্ষমাণ রক্তের অনুরোধ নেই!</b>"
+            : "ℹ️ <b>কোনো রক্তের অনুরোধ পাওয়া যায়নি।</b>";
+          const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+          await tgSendOrEdit(token, chatId, messageId, emptyMsg, kb, true);
+          return json({ ok: true });
+        }
+
+        let respText = isPendingOnly
+          ? `⏳ <b>অপেক্ষমাণ রক্তের অনুরোধসমূহ (সর্বশেষ ${reqs.length} টি):</b>\n\n`
+          : `🩸 <b>রক্তের অনুরোধসমূহ (সর্বশেষ ${reqs.length} টি):</b>\n\n`;
+
+        const inlineKb = [];
+
+        reqs.forEach((r, idx) => {
+          const cleanPhone = (r.contact_phone || "").replace(/[^0-9]/g, "");
+          const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
+          const prompt = `আসসালামু আলাইকুম, BRYBDPF থেকে রক্তের অনুরোধ সংক্রান্ত যোগাযোগ।`;
+          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(prompt)}`;
+
+          const statusBadge = r.status === "completed" ? "✅ সম্পন্ন" : (r.status === "cancelled" ? "❌ বাতিল" : "⏳ অপেক্ষমাণ");
+
+          respText += `<b>${idx + 1}. রোগী: ${escapeHtml(r.patient_name)}</b> [<b>${r.blood_group}</b>] (${r.units || 1} ব্যাগ)\n` +
+            `   🏥 ${escapeHtml(r.hospital_name)} | ${escapeHtml(r.district)}${r.thana ? ", " + escapeHtml(r.thana) : ""}\n` +
+            `   📞 <code>${r.contact_phone}</code> ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>\n` +
+            `   📌 স্ট্যাটাস: ${statusBadge}\n\n`;
+
+          if (r.status === "pending") {
+            inlineKb.push([
+              { text: `🎯 #${r.id} এর ডোনার দেখুন`, callback_data: `cb:match:${r.id}` },
+              { text: `✅ সম্পন্ন করুন`, callback_data: `cb:done:${r.id}` }
+            ]);
+          }
+        });
+
+        inlineKb.push([
+          { text: "🔄 রিফ্রেশ", callback_data: data },
+          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+        ]);
+
+        await tgSendOrEdit(token, chatId, messageId, respText, inlineKb, true);
+        return json({ ok: true });
+      }
+
+      if (data.startsWith("cb:match:")) {
+        if (!isAdmin) return json({ ok: true });
+        const reqId = parseInt(data.replace("cb:match:", ""), 10);
+        const reqItem = await env.DB.prepare("SELECT * FROM requests WHERE id = ?").bind(reqId).first();
+
+        if (!reqItem) {
+          await tgSendOrEdit(token, chatId, messageId, "❌ অনুরোধটি পাওয়া যায়নি।", [[{ text: "🔙 ফিরে যান", callback_data: "cb:pending_reqs" }]], true);
+          return json({ ok: true });
+        }
+
+        const donors = await findSmartMatchingDonors(env, reqItem.blood_group, reqItem.district, reqItem.thana, 10);
+
+        let matchText = `🎯 <b>অনুরোধ #${reqItem.id} এর জন্য ডোনার তালিকা:</b>\n` +
+          `👤 রোগী: <b>${escapeHtml(reqItem.patient_name)}</b> [<b>${reqItem.blood_group}</b>]\n` +
+          `📍 এলাকা: ${escapeHtml(reqItem.district)}${reqItem.thana ? ", " + escapeHtml(reqItem.thana) : ""}\n\n`;
+
+        if (donors.length === 0) {
+          matchText += `<i>কোনো উপযুক্ত ডোনার বর্তমানে ফ্রি নেই।</i>`;
+        } else {
+          matchText += donors.map((d, i) => {
+            const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
+            const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
+            const waMsg = `আসসালামু আলাইকুম ${d.name} ভাই, রোগী ${reqItem.patient_name} এর জন্য জরুরি ${reqItem.blood_group} রক্ত প্রয়োজন। আপনি কি রক্তদান করতে প্রস্তুত আছেন?`;
+            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`;
+            const tierBadge = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী]");
+            const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
+
+            return `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
+              `   📞 <code>${d.phone}</code> ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
+          }).join("\n\n");
+        }
+
+        const inlineKb = [
+          [{ text: "✅ এই অনুরোধ সম্পন্ন করুন", callback_data: `cb:done:${reqId}` }],
+          [{ text: "🔙 অনুরোধ তালিকায় ফিরুন", callback_data: "cb:pending_reqs" }]
+        ];
+
+        await tgSendOrEdit(token, chatId, messageId, matchText, inlineKb, true);
+        return json({ ok: true });
+      }
+
+      if (data.startsWith("cb:done:")) {
+        if (!isAdmin) return json({ ok: true });
+        const reqId = parseInt(data.replace("cb:done:", ""), 10);
+
+        await env.DB.prepare("UPDATE requests SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(reqId).run();
+
+        const successText = `✅ <b>অনুরোধ #${reqId} সফলভাবে সম্পন্ন হিসেবে চিহ্নিত করা হয়েছে!</b>\n\nরোগীর জীবন রক্ষায় অবদান রাখার জন্য ধন্যবাদ।`;
+        const kb = [
+          [{ text: "🩸 অন্যান্য অপেক্ষমাণ অনুরোধ", callback_data: "cb:pending_reqs" }],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ];
+        await tgSendOrEdit(token, chatId, messageId, successText, kb, true);
+        return json({ ok: true });
       }
 
       if (data === "cb:groups") {
-        await renderGroups(chatId, messageId, true);
-        return;
+        if (!isAdmin) return json({ ok: true });
+
+        const groupsText = `🩸 <b>রক্তের গ্রুপ অনুযায়ী ডোনার তালিকা দেখুন:</b>\nগ্রুপ সিলেক্ট করুন:`;
+        const groupKb = [
+          [
+            { text: "🅰️ A+", callback_data: "cb:grp:A%2B" },
+            { text: "🅱️ B+", callback_data: "cb:grp:B%2B" },
+            { text: "🆎 AB+", callback_data: "cb:grp:AB%2B" },
+            { text: "🅾️ O+", callback_data: "cb:grp:O%2B" }
+          ],
+          [
+            { text: "🅰️ A-", callback_data: "cb:grp:A-" },
+            { text: "🅱️ B-", callback_data: "cb:grp:B-" },
+            { text: "🆎 AB-", callback_data: "cb:grp:AB-" },
+            { text: "🅾️ O-", callback_data: "cb:grp:O-" }
+          ],
+          [
+            { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+          ]
+        ];
+        await tgSendOrEdit(token, chatId, messageId, groupsText, groupKb, true);
+        return json({ ok: true });
       }
 
       if (data.startsWith("cb:grp:")) {
-        const bg = data.replace("cb:grp:", "");
-        const { results } = await env.DB.prepare(
-          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE blood_group = ? AND is_available = 1 ORDER BY id DESC LIMIT 8"
-        ).bind(bg).all();
+        if (!isAdmin) return json({ ok: true });
+        const grp = decodeURIComponent(data.replace("cb:grp:", ""));
 
-        let donorText = "";
+        const { results: donors } = await env.DB.prepare(
+          "SELECT name, blood_group, district, thana, area, phone, total_donations, last_donation_date FROM donors WHERE blood_group = ? AND is_active = 1 ORDER BY last_donation_date ASC LIMIT 10"
+        ).bind(grp).all();
+
+        let donorText = `🩸 <b>গ্রুপ ${grp} এর ডোনার তালিকা (শীর্ষ ${donors.length || 0} জন):</b>\n\n`;
         const inlineKb = [];
 
-        if (!results || results.length === 0) {
-          donorText = `⚠️ <b>${escapeHtml(bg)}</b> গ্রুপের এই মুহূর্তে কোনো সক্রিয় ও প্রস্তুত ডোনার ডাটাবেজে পাওয়া যায়নি।`;
+        if (!donors || donors.length === 0) {
+          donorText += `<i>এই গ্রুপের কোনো সক্রিয় ডোনার বর্তমানে নিবন্ধিত নেই।</i>`;
         } else {
-          donorText = `🩸 <b>${escapeHtml(bg)} গ্রুপের প্রস্তুত ডোনার তালিকা (${results.length} জন):</b>\n────────────────────────────\n\n`;
-          donorText += results.map((d, i) => {
+          donorText += donors.map((d, i) => {
             const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
             const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
             const waMsg = `আসসালামু আলাইকুম ${d.name} ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে।`;
@@ -668,341 +620,230 @@ async function handleTelegramUpdate(update, env, ctx) {
         ]);
 
         await tgSendOrEdit(token, chatId, messageId, donorText, inlineKb, true);
-        return;
+        return json({ ok: true });
       }
 
-      if (data === "cb:pending") {
-        await renderPending(chatId, messageId, true);
-        return;
+      if (data === "cb:find_donor") {
+        const findHelp = `🔍 <b>ডোনার সার্চ করার নিয়ম:</b>\n\n` +
+          `নির্দিষ্ট রক্তদাতা খুঁজতে নিচের ফরম্যাটে মেসেজ লিখুন:\n` +
+          `<code>/find [রক্তের গ্রুপ বা জেলা বা ফোন নম্বর]</code>\n\n` +
+          `<b>উদাহরণ:</b>\n` +
+          `• <code>/find B+</code>\n` +
+          `• <code>/find রংপুর</code>\n` +
+          `• <code>/find 017</code>`;
+        await tgSendOrEdit(token, chatId, messageId, findHelp, [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+        return json({ ok: true });
       }
 
-      if (data.startsWith("cb:req_status:")) {
-        const parts = data.split(":");
-        const reqId = parts[2];
-        const newStatus = parts[3];
-
-        await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(newStatus, reqId).run();
-
-        const text = `✅ <b>রিকোয়েস্ট #${reqId} সফলভাবে '${newStatus}' স্ট্যাটাসে আপডেট করা হয়েছে!</b>`;
-        const kb = [
-          [{ text: "📋 পরবর্তী পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" }],
-          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-        ];
-
-        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
-        return;
-      }
-
-      if (data.startsWith("cb:req_donors:")) {
-        const reqId = data.replace("cb:req_donors:", "");
-        const req = await env.DB.prepare("SELECT * FROM blood_requests WHERE id = ?").bind(reqId).first();
-        if (!req) {
-          await tgAnswerCallback(token, cq.id, "রিকোয়েস্ট পাওয়া যায়নি।");
-          return;
-        }
-
-        const reqThana = req.thana || "";
-        const reqDist = (req.district || "রংপুর").trim();
-
-        const { results: donors } = await env.DB.prepare(`
-          SELECT name, blood_group, district, area, phone,
-            (CASE 
-              WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
-              WHEN district = ? THEN 2
-              ELSE 3
-            END) as proximity_tier
-          FROM donors 
-          WHERE blood_group = ? AND is_available = 1
-          ORDER BY proximity_tier ASC, id DESC LIMIT 10
-        `).bind(reqDist, `%${reqThana}%`, reqThana, reqDist, req.blood_group).all();
-
-        const reqCleanPhone = (req.contact_phone || "").replace(/[^0-9]/g, "");
-        const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
-
-        let shareToRequester = `🩸 *রক্তদাতাদের তালিকা — BRYBDPF* 🩸\n` +
-          `───────────────────────\n` +
-          `আসসালামু আলাইকুম,\n` +
-          `রোগীর জরুরি প্রয়োজনে *${req.blood_group}* রক্তদাতাদের তালিকা:\n\n`;
-
-        let donorItems = [];
-
-        if (donors && donors.length > 0) {
-          shareToRequester += donors.map((d, i) => {
-            const tierTag = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
-            const loc = (d.area ? d.area + ", " : "") + (d.district || "রংপুর");
-            return `${i + 1}. *${d.name}* (${loc}) ${tierTag}\n   📞 কল করুন: *${d.phone}*`;
-          }).join("\n\n");
-
-          shareToRequester += "\n\n───────────────────────\n💡 রক্তদাতাদের সাথে কথা বলে দ্রুত সময় নিশ্চিত করুন।\n🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।\n🌐 BRYBDPF ব্লাড নেটওয়ার্ক";
-
-          donorItems = donors.map((d, i) => {
-            const cleanPhone = d.phone.replace(/[^0-9]/g, "");
-            const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-            const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী]");
-            const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
-
-            const prefilledText = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
-              `───────────────────────\n` +
-              `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
-              `জরুরি প্রয়োজনে *${req.blood_group}* (${req.units || 1} ব্যাগ) রক্তের প্রয়োজন।\n\n` +
-              `📋 *রোগীর বিবরণ:*\n` +
-              `• *রোগী:* ${req.patient_name}\n` +
-              `• *হাসপাতাল:* ${req.hospital_name}\n` +
-              `• *স্থান/থানা:* ${req.thana ? req.thana + ", " : ""}${req.district}\n` +
-              `• *ঠিকানা/ওয়ার্ড:* ${req.location}\n` +
-              `• *কখন লাগবে:* *${req.needed_by}*\n` +
-              `• *আবেদনকারী:* ${req.requester_name || "স্বজন"} (*${req.contact_phone}*)\n` +
-              (req.note ? `• *নোট:* ${req.note}\n` : "") +
-              `───────────────────────\n` +
-              `🤲 আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n` +
-              `🌐 BRYBDPF মানবিক নেটওয়ার্ক`;
-
-            const donorWaUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledText)}`;
-
-            return `${i + 1}. <b>${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
-              `   📞 <code>${d.phone}</code> ➔ <a href="${donorWaUrl}">💬 <b>WhatsApp</b></a>`;
-          });
-        } else {
-          shareToRequester += "⚠️ কোনো সক্রিয় ডোনার পাওয়া যায়নি।";
-        }
-
-        const waShareUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareToRequester)}`;
-
-        const donorListText = donorItems.length > 0 
-          ? donorItems.join("\n\n") 
-          : "⚠️ এই মুহূর্তে কোনো প্রস্তুত ডোনার পাওয়া যায়নি।";
-
-        let text = `📋 <b>রিকোয়েস্ট #${req.id} — প্রস্তুত ডোনার তালিকা</b>\n` +
-          `────────────────────────────\n` +
-          `🩸 <b>রোগী:</b> ${escapeHtml(req.patient_name)} (<code>${escapeHtml(req.blood_group)}</code>)\n` +
-          `🏥 <b>হাসপাতাল:</b> ${escapeHtml(req.hospital_name)}, ${escapeHtml(req.district)}\n` +
-          (req.thana ? `📍 <b>থানা/উপজেলা:</b> ${escapeHtml(req.thana)}\n` : "") +
-          `📞 <b>আবেদনকারী:</b> ${escapeHtml(req.requester_name || "স্বজন")} (<code>${req.contact_phone}</code>)\n` +
-          `────────────────────────────\n` +
-          `📲 <b>রোগীর স্বজনকে ডোনারদের তালিকা পাঠান:</b>\n` +
-          `👉 <a href="${waShareUrl}"><b>WhatsApp-এ রোগীর স্বজনকে পাঠান</b></a>\n` +
-          `────────────────────────────\n` +
-          `📋 <b>উপযুক্ত ডোনারগণ (${escapeHtml(req.blood_group)}):</b>\n\n` +
-          donorListText;
-
-        const kb = [
-          [{ text: "📲 রোগীর স্বজনকে ডোনার লিস্ট পাঠান (WhatsApp)", url: waShareUrl }],
-          [
-            { text: "🤝 Matched", callback_data: `cb:req_status:${req.id}:Matched` },
-            { text: "✅ Fulfilled", callback_data: `cb:req_status:${req.id}:Fulfilled` }
-          ],
-          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-        ];
-
-        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
-        return;
-      }
-
-      if (data === "cb:mark_donation") {
-        await renderMarkDonationPrompt(chatId, messageId, true, fromId);
-        return;
-      }
-
-      if (data === "cb:donor_search") {
-        await renderDonorSearchPrompt(chatId, messageId, true, fromId);
-        return;
-      }
-
-      if (data.startsWith("cb:donor_delete:")) {
-        const donorId = data.replace("cb:donor_delete:", "");
-        await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(donorId).run();
-        const text = `🗑️ <b>ডোনার (ID #${donorId}) সফলভাবে ডাটাবেজ থেকে মুছে ফেলা হয়েছে!</b>`;
-        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
-        return;
-      }
-
-      if (data.startsWith("cb:donor_suspend:")) {
-        const parts = data.split(":");
-        const donorId = parts[2];
-        const days = parseInt(parts[3] || "90", 10);
-
-        await env.DB.prepare(
-          "UPDATE donors SET is_available = 0, last_donation_date = datetime('now', '+' || ? || ' days') WHERE id = ?"
-        ).bind(days, donorId).run();
-
-        const text = `⏸️ <b>ডোনার (ID #${donorId}) কে সফলভাবে ${days} দিনের জন্য সাময়িক সাসপেন্ড করা হয়েছে!</b>\nএই সময়ের মধ্যে কোনো অ্যালার্ট বা সার্চে তার তথ্য আসবে না।`;
-        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
-        return;
-      }
-
-      if (data.startsWith("cb:donor_reactivate:")) {
-        const donorId = data.replace("cb:donor_reactivate:", "");
-        await env.DB.prepare("UPDATE donors SET is_available = 1 WHERE id = ?").bind(donorId).run();
-
-        const text = `✅ <b>ডোনার (ID #${donorId}) সফলভাবে পুনরায় সক্রিয় (Active) করা হয়েছে!</b>`;
-        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
-        await tgSendOrEdit(token, chatId, messageId, text, kb, true);
-        return;
+      if (data === "cb:help") {
+        const helpText = `ℹ️ <b>BRYBDPF হেল্প সেন্টার</b> ℹ️\n\n` +
+          `• ওয়েব পোর্টাল: https://brybdpf.pages.dev\n` +
+          `• অ্যাডমিন প্যানেল: https://brybdpf.pages.dev/admin\n` +
+          `• সহায়তা ও যোগাযোগ: রেড ইয়ুথ ব্লাড ডোনার্স প্ল্যাটফর্ম\n` +
+          `• জরুরি রক্তের চাহিদা মেটাতে ও দ্রুত ডোনার খুঁজে পেতে এই বট ২৪/৭ সক্রিয় রয়েছে।`;
+        await tgSendOrEdit(token, chatId, messageId, helpText, [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+        return json({ ok: true });
       }
     }
 
-    // 2. Handle Text Messages (Reply Keyboard or Typed)
-    if (update.message) {
-      const msg = update.message;
-      const fromId = String(msg.from?.id || "");
-      chatId = msg.chat?.id;
-      const text = (msg.text || "").trim();
-
-      // Anti-Hijack Authorization Check
-      if (allowedUids.length > 0 && !allowedUids.includes(fromId)) {
-        return;
-      }
-
-      // Check if admin is waiting for input
-      const adminStateRecord = await env.DB.prepare(
-        "SELECT state, data FROM bot_admin_states WHERE admin_uid = ?"
-      ).bind(fromId).first();
-
-      const currentState = adminStateRecord ? adminStateRecord.state : "";
-
-      // Menu / Refresh
-      if (text === "/start" || text === "/menu" || text.includes("মেনু") || text.includes("রিফ্রেশ")) {
-        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
-        const welcomeText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল প্যানেল</b> 🩸\n` +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `স্বাগতম! আপনি টেলিগ্রাম থেকেই সরাসরি ডোনার ও রক্তের জরুরি রিকোয়েস্ট পরিচালনা করতে পারেন।\n\n` +
-          `নিচের মেনু বা বাটন নির্বাচন করুন:`;
-
-        await tgSendMessage(token, chatId, welcomeText, getMainAdminKeyboard());
-        return;
-      }
-
-      // Stats
-      if (text === "/stats" || text.includes("পরিসংখ্যান")) {
-        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
-        await renderStats(chatId, null, false);
-        return;
-      }
-
-      // Groups
-      if (text === "/groups" || text.includes("গ্রুপ")) {
-        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
-        await renderGroups(chatId, null, false);
-        return;
-      }
-
-      // Pending
-      if (text === "/pending" || text.includes("পেন্ডিং")) {
-        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
-        await renderPending(chatId, null, false);
-        return;
-      }
-
-      // Mark Donation
-      if (text === "/donate" || text === "/donated" || text.includes("ডোনেশন") || text.includes("রক্তদান")) {
-        await renderMarkDonationPrompt(chatId, null, false, fromId);
-        return;
-      }
-
-      // Donor Search
-      if (text === "/search" || text.includes("সার্চ")) {
-        await renderDonorSearchPrompt(chatId, null, false, fromId);
-        return;
-      }
-
-      // State: waiting_for_donation_phone
-      if (currentState === "waiting_for_donation_phone") {
-        const cleanPhone = text.replace(/[^0-9]/g, "");
-        if (cleanPhone.length < 10) {
-          await tgSendMessage(token, chatId, "⚠️ অনুগ্রহ করে সঠিক মোবাইল নম্বর দিন। নম্বরটি কমপক্ষে ১০ বা ১১ ডিজিটের হতে হবে:");
-          return;
-        }
-
-        const donor = await env.DB.prepare(
-          "SELECT * FROM donors WHERE phone LIKE ? OR phone LIKE ?"
-        ).bind(`%${cleanPhone.slice(-10)}%`, cleanPhone).first();
-
-        if (!donor) {
-          await tgSendMessage(token, chatId, `❌ '${cleanPhone}' নম্বর দিয়ে কোনো ডোনার ডাটাবেজে পাওয়া যায়নি।\nপুনরায় নম্বর দিন অথবা বাতিল করতে /menu লিখুন:`);
-          return;
-        }
-
-        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
-
-        const isFemale = (donor.gender || "").toLowerCase() === "female" || donor.gender === "নারী";
-        const cooldownDays = isFemale ? 120 : 90;
-
-        await env.DB.prepare(`
-          UPDATE donors SET
-            is_available = 0,
-            last_donation_date = CURRENT_DATE,
-            total_donations = COALESCE(total_donations, 0) + 1
-          WHERE id = ?
-        `).bind(donor.id).run();
-
-        const respText = `✅ <b>রক্তদান সফলভাবে রেকর্ড সম্পন্ন!</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
-          `👤 <b>ডোনার:</b> ${escapeHtml(donor.name)} (<code>${escapeHtml(donor.blood_group)}</code>)\n` +
-          `📞 <b>ফোন:</b> <code>${donor.phone}</code>\n` +
-          `🚻 <b>লিঙ্গ:</b> ${isFemale ? "নারী" : "পুরুষ"} (বিশ্রামকাল: <b>${cooldownDays} দিন</b>)\n` +
-          `🩸 <b>সর্বমোট রক্তদান:</b> ${(donor.total_donations || 0) + 1} বার\n\n` +
-          `<i>আগামী ${cooldownDays} দিনের জন্য এই রক্তদাতাকে স্বয়ংক্রিয়ভাবে আন-অ্যাক্টিভ (বিশ্রামরত) রাখা হয়েছে।</i>`;
-
-        const kb = [
-          [{ text: "💉 আরেকটি ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }],
-          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
-        ];
-
-        await tgSendMessage(token, chatId, respText, kb);
-        return;
-      }
-
-      // State: waiting_for_search_phone
-      if (currentState === "waiting_for_search_phone") {
-        const cleanPhone = text.replace(/[^0-9]/g, "");
-        const donor = await env.DB.prepare(
-          "SELECT * FROM donors WHERE phone LIKE ? OR phone LIKE ?"
-        ).bind(`%${cleanPhone.slice(-10)}%`, cleanPhone).first();
-
-        if (!donor) {
-          await tgSendMessage(token, chatId, `❌ '${cleanPhone}' নম্বর দিয়ে কোনো ডোনার পাওয়া যায়নি।\nঅন্য কোনো নম্বর লিখে পাঠান অথবা বাতিল করতে /menu লিখুন:`);
-          return;
-        }
-
-        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
-
-        const isAvail = donor.is_available === 1;
-        const respText = `👤 <b>ডোনার প্রোফাইল ও বিস্তারিত তথ্য:</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
-          `<b>নাম:</b> ${escapeHtml(donor.name)}\n` +
-          `<b>রক্তের গ্রুপ:</b> <code>${escapeHtml(donor.blood_group)}</code>\n` +
-          `<b>মোবাইল নম্বর:</b> <code>${donor.phone}</code>\n` +
-          `<b>ঠিকানা:</b> ${escapeHtml(donor.district)}, ${escapeHtml(donor.area)}\n` +
-          `<b>বয়স ও লিঙ্গ:</b> ${donor.age || "-"} বছর | ${escapeHtml(donor.gender || "Male")}\n` +
-          `<b>স্ট্যাটাস:</b> ${isAvail ? "🟢 সক্রিয় ও প্রস্তুত" : "🔴 সাময়িক অনুপলব্ধ / বিশ্রামে"}\n` +
-          `<b>মোট রক্তদান:</b> ${donor.total_donations || 0} বার\n` +
-          `<b>সর্বশেষ রক্তদান:</b> ${donor.last_donation_date || "তথ্য নেই"}\n\n` +
-          `ব্যবস্থা গ্রহণ করতে নিচের অ্যাকশন বাটন ব্যবহার করুন:`;
-
-        const kb = [
-          [
-            { text: isAvail ? "⏸️ ৯০ দিন সাসপেন্ড" : "✅ পুনরায় সক্রিয় করুন", callback_data: isAvail ? `cb:donor_suspend:${donor.id}:90` : `cb:donor_reactivate:${donor.id}` },
-            { text: "🗑️ স্থায়ীভাবে মুছুন", callback_data: `cb:donor_delete:${donor.id}` }
-          ],
-          [
-            { text: "🔍 অন্য ডোনার খুঁজুন", callback_data: "cb:donor_search" },
-            { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
-          ]
-        ];
-
-        await tgSendMessage(token, chatId, respText, kb);
-        return;
-      }
-
-      // Default fallback
-      await tgSendMessage(token, chatId, "🩸 মেনু দেখতে নিচের বাটনে ক্লিক করুন অথবা /menu লিখুন:", getMainAdminKeyboard());
-    }
+    return json({ ok: true });
   } catch (err) {
-    console.error("Telegram bot error:", err);
-    try {
-      if (token && chatId) {
-        await tgSendMessage(token, chatId, "⚠️ কমান্ডটি প্রক্রিয়াকরণে সাময়িক সমস্যা হয়েছে। অনুগ্রহ করে /menu লিখে চেষ্টা করুন।");
+    return json({ ok: false, error: err.message });
+  }
+}
+
+async function getPlatformStats(env) {
+  try {
+    const totalDonors = (await env.DB.prepare("SELECT COUNT(*) AS c FROM donors WHERE is_active = 1").first())?.c || 0;
+    const totalRequests = (await env.DB.prepare("SELECT COUNT(*) AS c FROM requests").first())?.c || 0;
+    const completedRequests = (await env.DB.prepare("SELECT COUNT(*) AS c FROM requests WHERE status = 'completed'").first())?.c || 0;
+    const pendingRequests = (await env.DB.prepare("SELECT COUNT(*) AS c FROM requests WHERE status = 'pending'").first())?.c || 0;
+    return { totalDonors, totalRequests, completedRequests, pendingRequests };
+  } catch (e) {
+    return { totalDonors: 0, totalRequests: 0, completedRequests: 0, pendingRequests: 0 };
+  }
+}
+
+const RANGPUR_GEO = {
+  "রংপুর": ["কোতোয়ালী", "গংগাচড়া", "তারাগঞ্জ", "বদরগঞ্জ", "মিঠাপুকুর", "পীরগাছা", "পীরগঞ্জ", "কাউনিয়া"],
+  "কুড়িগ্রাম": ["কুড়িগ্রাম সদর", "নাগেশ্বরী", "ভুরুঙ্গামারী", "ফুলবাড়ী", "রাজারহাট", "উলিপুর", "চিলমারী", "রৌমারী", "চর রাজিবপুর"],
+  "লালমনিরহাট": ["লালমনিরহাট সদর", "আদিতমারী", "কালীগঞ্জ", "হাতীবান্ধা", "পাটগ্রাম"],
+  "গাইবান্ধা": ["গাইবান্ধা সদর", "সাদুল্লাপুর", "গোবিন্দগঞ্জ", "পলাশবাড়ী", "সুন্দরগঞ্জ", "সাঘাটা", "ফুলছড়ি"],
+  "নীলফামারী": ["নীলফামারী সদর", "সৈয়দপুর", "ডোমার", "ডিমলা", "জলঢাকা", "কিশোরগঞ্জ"],
+  "দিনাজপুর": ["দিনাজপুর সদর", "বিরামপুর", "বীরগঞ্জ", "বোচাগঞ্জ", "ফুলবাড়ী", "চিরিরবন্দর", "ঘোড়াঘাট", "হাকিমপুর", "কাহারোল", "খানসামা", "নবাবগঞ্জ", "পার্বতীপুর"],
+  "ঠাকুরগাঁও": ["ঠাকুরগাঁও সদর", "পীরগঞ্জ", "বালিয়াডাঙ্গী", "হরিপুর", "রাণীশংকৈল"],
+  "পঞ্চগড়": ["পঞ্চগড় সদর", "দেবীগঞ্জ", "বোদা", "আটোয়ারী", "তেঁতুলিয়া"]
+};
+
+function normalizeGeoName(name) {
+  if (!name) return "";
+  return String(name).trim().replace(/^(থানা|উপজেলা|জেলা)\s*:\s*/, "");
+}
+
+async function findSmartMatchingDonors(env, bloodGroup, reqDistrict, reqThana, limit = 10) {
+  const normDistrict = normalizeGeoName(reqDistrict);
+  const normThana = normalizeGeoName(reqThana);
+
+  const matched = [];
+  const addedIds = new Set();
+
+  if (normThana && normDistrict) {
+    const tier1Res = await env.DB.prepare(`
+      SELECT id, name, blood_group, district, thana, area, phone, last_donation_date, total_donations, 1 as proximity_tier
+      FROM donors
+      WHERE blood_group = ? 
+        AND is_active = 1
+        AND (district = ? OR district LIKE ?)
+        AND (thana = ? OR thana LIKE ?)
+      ORDER BY 
+        CASE WHEN last_donation_date IS NULL OR last_donation_date = '' THEN 0 ELSE 1 END,
+        last_donation_date ASC
+      LIMIT ?
+    `).bind(bloodGroup, normDistrict, `%${normDistrict}%`, normThana, `%${normThana}%`, limit).all();
+
+    for (const d of (tier1Res.results || [])) {
+      if (!addedIds.has(d.id)) {
+        matched.push(d);
+        addedIds.add(d.id);
       }
+    }
+  }
+
+  if (matched.length < limit && normDistrict) {
+    const needed = limit - matched.length;
+    const tier2Res = await env.DB.prepare(`
+      SELECT id, name, blood_group, district, thana, area, phone, last_donation_date, total_donations, 2 as proximity_tier
+      FROM donors
+      WHERE blood_group = ?
+        AND is_active = 1
+        AND (district = ? OR district LIKE ?)
+      ORDER BY 
+        CASE WHEN last_donation_date IS NULL OR last_donation_date = '' THEN 0 ELSE 1 END,
+        last_donation_date ASC
+      LIMIT ?
+    `).bind(bloodGroup, normDistrict, `%${normDistrict}%`, needed * 2).all();
+
+    for (const d of (tier2Res.results || [])) {
+      if (!addedIds.has(d.id)) {
+        matched.push(d);
+        addedIds.add(d.id);
+        if (matched.length >= limit) break;
+      }
+    }
+  }
+
+  if (matched.length < limit) {
+    const needed = limit - matched.length;
+    const tier3Res = await env.DB.prepare(`
+      SELECT id, name, blood_group, district, thana, area, phone, last_donation_date, total_donations, 3 as proximity_tier
+      FROM donors
+      WHERE blood_group = ?
+        AND is_active = 1
+      ORDER BY 
+        CASE WHEN district = 'রংপুর' THEN 0 ELSE 1 END,
+        CASE WHEN last_donation_date IS NULL OR last_donation_date = '' THEN 0 ELSE 1 END,
+        last_donation_date ASC
+      LIMIT ?
+    `).bind(bloodGroup, needed * 2).all();
+
+    for (const d of (tier3Res.results || [])) {
+      if (!addedIds.has(d.id)) {
+        matched.push(d);
+        addedIds.add(d.id);
+        if (matched.length >= limit) break;
+      }
+    }
+  }
+
+  return matched.slice(0, limit);
+}
+
+async function ensureAllDatabaseTables(db) {
+  if (!db) return;
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS donors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        blood_group TEXT NOT NULL,
+        district TEXT NOT NULL,
+        thana TEXT,
+        area TEXT,
+        phone TEXT NOT NULL,
+        last_donation_date TEXT,
+        total_donations INTEGER DEFAULT 0,
+        is_available INTEGER DEFAULT 1,
+        is_active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_name TEXT NOT NULL,
+        requester_name TEXT,
+        requester_blood_group TEXT,
+        blood_group TEXT NOT NULL,
+        units INTEGER DEFAULT 1,
+        hospital_name TEXT NOT NULL,
+        district TEXT NOT NULL,
+        thana TEXT,
+        location TEXT,
+        contact_phone TEXT NOT NULL,
+        needed_by TEXT,
+        note TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        email TEXT,
+        role TEXT DEFAULT 'admin',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS admin_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS admin_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    try {
+      await db.prepare("ALTER TABLE donors ADD COLUMN thana TEXT").run();
+    } catch (_) {}
+    try {
+      await db.prepare("ALTER TABLE requests ADD COLUMN thana TEXT").run();
+    } catch (_) {}
+    try {
+      await db.prepare("ALTER TABLE requests ADD COLUMN requester_name TEXT").run();
+    } catch (_) {}
+    try {
+      await db.prepare("ALTER TABLE requests ADD COLUMN requester_blood_group TEXT").run();
+    } catch (_) {}
+  } catch (_) {}
+}
+
+let dbInitialized = false;
+async function ensureDbInitializedOnce(db) {
+  if (!dbInitialized) {
+    try {
+      await ensureAllDatabaseTables(db);
+      dbInitialized = true;
     } catch (_) {}
   }
 }
@@ -1020,598 +861,552 @@ export async function onRequest(context) {
 
       if (method === "OPTIONS") return json({ ok: true });
 
-      
+      if (env.DB) {
+        await ensureDbInitializedOnce(env.DB);
+      }
+
       if (path === "/api/telegram/webhook" && method === "POST") {
-        try {
-          const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
-          if (!secret || secret !== TELEGRAM_WEBHOOK_SECRET) {
-            return json({ error: "Invalid secret token" }, 403);
-          }
-          const update = await request.json();
-          ctx.waitUntil(handleTelegramUpdate(update, env, ctx));
-          return json({ ok: true });
-        } catch (e) {
-          return json({ ok: true });
-        }
+        return await handleTelegramWebhook(request, env);
       }
 
       if (path === "/api/telegram/setup-webhook" && method === "POST") {
-        const adminSession = await getAuthenticatedAdmin(request, env);
-        if (!adminSession) return json({ error: "Unauthorized" }, 401);
+        const admin = await getAuthenticatedAdmin(request, env);
+        if (!admin) return json({ error: "অননুমোদিত অ্যাক্সেস" }, 401);
 
-        const { results } = await env.DB.prepare(
-          "SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'"
-        ).all();
-        const token = results && results.length > 0 ? results[0].value : env.TELEGRAM_BOT_TOKEN;
-        if (!token) return json({ error: "টেলিগ্রাম বট টোকেন সেট করা নেই।" }, 400);
+        const host = url.origin;
+        const webhookUrl = `${host}/api/telegram/webhook`;
 
-        const webhookUrl = `${url.origin}/api/telegram/webhook`;
+        const tokenRes = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'").first();
+        if (!tokenRes || !tokenRes.value) {
+          return json({ success: false, error: "টেলিগ্রাম বট টোকেন কনফিগার করা নেই।" });
+        }
+
+        const token = tokenRes.value;
         const tgRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             url: webhookUrl,
-            secret_token: TELEGRAM_WEBHOOK_SECRET,
+            drop_pending_updates: false,
             allowed_updates: ["message", "callback_query"]
           })
         });
         const tgData = await tgRes.json();
-        return json({ success: tgData.ok, message: tgData.description || "ওয়েবহুক সফলভাবে কনফিগার হয়েছে!", webhook_url: webhookUrl });
+        return json({ success: tgData.ok, result: tgData, webhookUrl });
       }
 
       if (path === "/api/captcha" && method === "GET") {
-        const captcha = await generateCaptcha();
-        return json(captcha);
+        const n1 = Math.floor(Math.random() * 9) + 1;
+        const n2 = Math.floor(Math.random() * 9) + 1;
+        const token = btoa(`${n1}:${n2}:${Date.now()}`);
+        return json({ question: `${n1} + ${n2} = ?`, token });
       }
 
       if (path === "/api/stats" && method === "GET") {
-        const start = performance.now();
-        const [donorsRes, availRes, reqRes, distRes] = await Promise.all([
-          env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-          env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
-          env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
-          env.DB.prepare("SELECT count(DISTINCT district) as count FROM donors").first()
-        ]);
-        const duration = (performance.now() - start).toFixed(2);
-        return json({
-          total_donors: donorsRes ? donorsRes.count : 0,
-          available_donors: availRes ? availRes.count : 0,
-          total_requests: reqRes ? reqRes.count : 0,
-          districts_count: distRes ? distRes.count : 0,
-          query_duration_ms: duration
-        });
+        const stats = await getPlatformStats(env);
+        return json(stats);
       }
 
       if (path === "/api/donors/search") {
         return json({
-          success: false,
-          error: "রক্তদাতাদের ব্যক্তিগত তথ্যের সুরক্ষা ও গোপনীয়তার স্বার্থে উন্মুক্ত পাবলিক অনুসন্ধান বন্ধ রাখা হয়েছে। জরুরি রক্তের প্রয়োজনে দয়া করে সরাসরি রিকোয়েস্ট সাবমিট করুন।"
+          error: "নিরাপত্তা ও গোপনীয়তা সুরক্ষার স্বার্থে রক্তদাতাদের উন্মুক্ত তালিকা প্রদর্শন সাময়িকভাবে বন্ধ রাখা হয়েছে। আপনার রক্তের প্রয়োজন হলে ওয়েবসাইটের 'জরুরি রক্তের অনুরোধ' ফর্মটি পূরণ করুন।"
         }, 403);
       }
 
       if (path === "/api/donors/register" && method === "POST") {
-        try {
-          const body = await request.json();
-          const {
-            name, blood_group, phone, district, area, age, gender,
-            last_donation_date, total_donations, captcha_token, captcha_answer,
-            agreed_future_donation, agreed_data_save
-          } = body;
+        const data = await request.json();
+        const { name, blood_group, district, thana, area, phone, last_donation_date, captcha_token, captcha_answer } = data;
 
-          if (!captcha_token || !captcha_answer || !(await verifyCaptcha(captcha_token, captcha_answer))) {
-            return json({ error: "ক্যাপচা যাচাই ব্যর্থ হয়েছে! অনুগ্রহ করে সঠিক উত্তর দিন।" }, 400);
-          }
-
-          if (!name || !blood_group || !phone || !district || !area || !age) {
-            return json({ error: "সকল প্রয়োজনীয় তথ্য সঠিকভাবে পূরণ করুন।" }, 400);
-          }
-
-          const cleanPhone = normalizePhone(phone);
-          if (!isValidPhone(cleanPhone)) {
-            return json({ error: "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।" }, 400);
-          }
-          const existing = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
-          if (existing) {
-            return json({ error: "এই মোবাইল নম্বরটি দিয়ে ইতিমধ্যে ডোনার হিসেবে রেজিস্ট্রেশন করা আছে।" }, 409);
-          }
-
-          const stmt = env.DB.prepare(`
-            INSERT INTO donors (
-              name, blood_group, phone, district, area, age, gender,
-              last_donation_date, total_donations, is_available,
-              agreed_future_donation, agreed_data_save
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-          `);
-
-          await stmt.bind(
-            name.trim(),
-            blood_group,
-            cleanPhone,
-            district.trim(),
-            area.trim(),
-            parseInt(age, 10),
-            gender || "Male",
-            last_donation_date || null,
-            parseInt(total_donations || "0", 10),
-            agreed_future_donation ? 1 : 0,
-            agreed_data_save ? 1 : 0
-          ).run();
-
-          return json({ success: true, message: "ডোনার হিসেবে আপনার নিবন্ধন সফল হয়েছে!" });
-        } catch (err) {
-          return json({ error: "নিবন্ধন ব্যর্থ হয়েছে: " + err.message }, 500);
+        if (!name || !blood_group || !district || !phone) {
+          return json({ error: "নাম, রক্তের গ্রুপ, জেলা এবং মোবাইল নম্বর আবশ্যক।" }, 400);
         }
+
+        if (!isValidPhone(phone)) {
+          return json({ error: "সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নম্বর দিন (যেমন: 017xxxxxxxx)।" }, 400);
+        }
+
+        const validCaptcha = await verifyCaptcha(captcha_token, captcha_answer);
+        if (!validCaptcha) {
+          return json({ error: "ক্যাপচা সমাধান সঠিক হয়নি অথবা মেয়াদোত্তীর্ণ হয়েছে। পুনরায় চেষ্টা করুন।" }, 400);
+        }
+
+        const cleanPhone = normalizePhone(phone);
+        const existing = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
+        if (existing) {
+          return json({ error: "এই মোবাইল নম্বরটি দিয়ে ইতিমধ্যে রক্তদাতা নিবন্ধিত রয়েছে।" }, 400);
+        }
+
+        await env.DB.prepare(
+          "INSERT INTO donors (name, blood_group, district, thana, area, phone, last_donation_date, total_donations, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)"
+        ).bind(
+          name.trim(),
+          blood_group.trim().toUpperCase(),
+          district.trim(),
+          (thana || "").trim(),
+          (area || "").trim(),
+          cleanPhone,
+          last_donation_date || null
+        ).run();
+
+        return json({ success: true, message: "রক্তদাতা হিসেবে আপনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে! আপনাকে ধন্যবাদ।" });
       }
 
       if (path === "/api/requests/create" && method === "POST") {
-        try {
-          const body = await request.json();
-          const {
-            patient_name, blood_group, units, district, thana, needed_by,
-            hospital_name, location, note, contact_phone, urgency,
-            requester_name, requester_blood_group, requester_age, requester_gender,
-            requester_district, requester_area,
-            captcha_token, captcha_answer, agreed_future_donation, agreed_data_save
-          } = body;
+        const data = await request.json();
+        const {
+          patient_name,
+          requester_name,
+          requester_blood_group,
+          blood_group,
+          units,
+          hospital_name,
+          district,
+          thana,
+          location,
+          contact_phone,
+          needed_by,
+          note,
+          register_as_donor,
+          captcha_token,
+          captcha_answer
+        } = data;
 
-          if (!captcha_token || !captcha_answer || !(await verifyCaptcha(captcha_token, captcha_answer))) {
-            return json({ error: "ক্যাপচা যাচাই ব্যর্থ হয়েছে! অনুগ্রহ করে সঠিক উত্তর দিন।" }, 400);
-          }
+        if (!patient_name || !blood_group || !hospital_name || !district || !contact_phone) {
+          return json({ error: "রোগীর নাম, রক্তের গ্রুপ, হাসপাতাল, জেলা এবং যোগাযোগ নম্বর আবশ্যক।" }, 400);
+        }
 
-          if (!patient_name || !blood_group || !units || !district || !needed_by || !hospital_name || !location || !contact_phone) {
-            return json({ error: "রোগী ও হাসপাতালের সকল প্রয়োজনীয় তথ্য পূরণ করুন।" }, 400);
-          }
+        if (!isValidPhone(contact_phone)) {
+          return json({ error: "সঠিক ১১ ডিজিটের বাংলাদেশী মোবাইল নম্বর দিন।" }, 400);
+        }
 
-          if (!agreed_future_donation || !agreed_data_save) {
-            return json({ error: "রক্তের রিকোয়েস্ট পাঠাতে হলে উভয় শর্তাবলীতে সম্মতি প্রদান বাধ্যতামূলক।" }, 400);
-          }
+        const validCaptcha = await verifyCaptcha(captcha_token, captcha_answer);
+        if (!validCaptcha) {
+          return json({ error: "ক্যাপচা সমাধান সঠিক হয়নি অথবা মেয়াদোত্তীর্ণ হয়েছে।" }, 400);
+        }
 
-          const cleanPhone = normalizePhone(contact_phone);
-          if (!isValidPhone(cleanPhone)) {
-            return json({ error: "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।" }, 400);
-          }
-          const recentReq = await env.DB.prepare(
-            "SELECT id FROM blood_requests WHERE contact_phone = ? AND created_at > datetime('now', '-24 hours')"
-          ).bind(cleanPhone).first();
+        const cleanPhone = normalizePhone(contact_phone);
 
-          if (recentReq) {
-            return json({ error: "বিগত ২৪ ঘণ্টায় এই নম্বর থেকে ইতিমধ্যে একটি রিকোয়েস্ট পাঠানো হয়েছে। জরুরি প্রয়োজনে অ্যাডমিনের সাথে যোগাযোগ করুন।" }, 429);
-          }
+        const insertResult = await env.DB.prepare(
+          "INSERT INTO requests (patient_name, requester_name, requester_blood_group, blood_group, units, hospital_name, district, thana, location, contact_phone, needed_by, note, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
+        ).bind(
+          patient_name.trim(),
+          (requester_name || "").trim() || patient_name.trim(),
+          (requester_blood_group || "").trim() || null,
+          blood_group.trim().toUpperCase(),
+          parseInt(units, 10) || 1,
+          hospital_name.trim(),
+          district.trim(),
+          (thana || "").trim(),
+          (location || "").trim(),
+          cleanPhone,
+          needed_by || "জরুরি",
+          note || ""
+        ).run();
 
-          const insertReqStmt = env.DB.prepare(`
-            INSERT INTO blood_requests (
-              patient_name, blood_group, units, district, thana, hospital_name,
-              location, contact_phone, urgency, needed_by, note, requester_name,
-              status, requester_blood_group
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
-          `);
+        const requestId = insertResult.meta?.last_row_id;
 
-          const reqInsertRes = await insertReqStmt.bind(
-            patient_name.trim(),
-            blood_group,
-            parseInt(units, 10) || 1,
-            (district || "রংপুর").trim(),
-            thana ? thana.trim() : "",
-            hospital_name.trim(),
-            location.trim(),
-            cleanPhone,
-            urgency || "Emergency",
-            needed_by.trim(),
-            note ? note.trim() : "",
-            requester_name ? requester_name.trim() : "স্বজন",
-            requester_blood_group || null
-          ).run();
-
-          const donorBloodGroupToRegister = requester_blood_group || blood_group;
-          const donorNameToRegister = requester_name ? requester_name.trim() : patient_name.trim();
-          const donorDistrictToRegister = requester_district ? requester_district.trim() : (district || "রংপুর").trim();
-          const donorAreaToRegister = requester_area ? requester_area.trim() : (thana || location).trim();
-          const donorAgeToRegister = requester_age ? parseInt(requester_age, 10) : 25;
-          const donorGenderToRegister = requester_gender || "Male";
-
-          const existingDonor = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
-          if (!existingDonor) {
-            await env.DB.prepare(`
-              INSERT INTO donors (
-                name, blood_group, phone, district, area, age, gender,
-                is_available, agreed_future_donation, agreed_data_save
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1)
-            `).bind(
-              donorNameToRegister,
-              donorBloodGroupToRegister,
-              cleanPhone,
-              donorDistrictToRegister,
-              donorAreaToRegister,
-              donorAgeToRegister,
-              donorGenderToRegister
-            ).run();
-          }
-
-          let matchedDonors = [];
+        if (register_as_donor && requester_name && requester_blood_group) {
           try {
-            const cleanDist = (district || "রংপুর").trim();
-            const cleanThana = (thana || "").trim();
-
-            const { results } = await env.DB.prepare(`
-              SELECT name, blood_group, district, area, phone,
-                (CASE 
-                  WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
-                  WHEN district = ? THEN 2
-                  ELSE 3
-                END) as proximity_tier
-              FROM donors 
-              WHERE blood_group = ? AND is_available = 1 AND phone != ?
-              ORDER BY 
-                proximity_tier ASC,
-                RANDOM()
-              LIMIT 20
-            `).bind(
-              cleanDist, `%${cleanThana}%`, cleanThana,
-              cleanDist,
-              blood_group, cleanPhone
-            ).all();
-            matchedDonors = results || [];
-          } catch (e) {
-            console.error("Donor match query error:", e);
-          }
-
-          ctx.waitUntil(sendTelegramAlert(env, {
-            patient_name: patient_name.trim(),
-            blood_group,
-            units: parseInt(units, 10) || 1,
-            district: (district || "রংপুর").trim(),
-            thana: thana ? thana.trim() : "",
-            hospital_name: hospital_name.trim(),
-            location: location.trim(),
-            contact_phone: cleanPhone,
-            needed_by: needed_by.trim(),
-            note: note ? note.trim() : "",
-            requester_name: requester_name ? requester_name.trim() : "স্বজন",
-            requester_blood_group
-          }, matchedDonors));
-
-          return json({
-            success: true,
-            message: "আপনার রক্তের রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে! উপযুক্ত ডোনারদের সাথে যোগাযোগ এবং টেলিগ্রাম অ্যালার্ট প্রক্রিয়া শুরু হয়েছে।",
-            request_id: reqInsertRes.meta?.last_row_id || null
-          });
-        } catch (err) {
-          return json({ error: "রিকোয়েস্ট ব্যর্থ হয়েছে: " + err.message }, 500);
-        }
-      }
-
-      if (path === "/api/admin/check-setup" && method === "GET") {
-        const adminCount = await env.DB.prepare("SELECT count(*) as count FROM admins").first();
-        return json({ needsSetup: !adminCount || adminCount.count === 0 });
-      }
-
-      if (path === "/api/admin/setup" && method === "POST") {
-        const adminCount = await env.DB.prepare("SELECT count(*) as count FROM admins").first();
-        if (adminCount && adminCount.count > 0) {
-          return json({ error: "অ্যাডমিন ইতিমধ্যে কনফিগার করা আছে। নতুন অ্যাডমিন তৈরি সম্পূর্ণ নিষিদ্ধ।" }, 403);
+            const exists = await env.DB.prepare("SELECT id FROM donors WHERE phone = ?").bind(cleanPhone).first();
+            if (!exists) {
+              await env.DB.prepare(
+                "INSERT INTO donors (name, blood_group, district, thana, area, phone, total_donations, is_active) VALUES (?, ?, ?, ?, ?, ?, 0, 1)"
+              ).bind(
+                requester_name.trim(),
+                requester_blood_group.trim().toUpperCase(),
+                district.trim(),
+                (thana || "").trim(),
+                (location || "").trim(),
+                cleanPhone
+              ).run();
+            }
+          } catch (e) {}
         }
 
-        const { email, password, telegram_token, telegram_uids } = await request.json();
-        if (!email || !password || password.length < 8) {
-          return json({ error: "সঠিক ইমেইল এবং কমপক্ষে ৮ অক্ষরের পাসওয়ার্ড দিন।" }, 400);
-        }
+        const matchedDonors = await findSmartMatchingDonors(env, blood_group.trim().toUpperCase(), district.trim(), (thana || "").trim(), 10);
 
-        const salt = generateRandomToken(16);
-        const hash = await hashPassword(password, salt);
-
-        await env.DB.prepare("INSERT INTO admins (email, password_hash, salt, role) VALUES (?, ?, ?, 'superadmin')")
-          .bind(email.trim().toLowerCase(), hash, salt)
-          .run();
-
-        if (telegram_token && telegram_token.trim()) {
-          await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_bot_token', ?)")
-            .bind(telegram_token.trim())
-            .run();
-        }
-
-        if (telegram_uids && telegram_uids.trim()) {
-          await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_admin_uids', ?)")
-            .bind(telegram_uids.trim())
-            .run();
-        }
-
-        return json({ success: true, message: "অ্যাডমিন সফলভাবে কনফিগার করা হয়েছে!" });
-      }
-
-      if (path === "/api/admin/login" && method === "POST") {
-        const { email, password } = await request.json();
-        if (!email || !password) {
-          return json({ error: "ইমেইল এবং পাসওয়ার্ড প্রদান করুন।" }, 400);
-        }
-
-        const cleanEmail = email.trim().toLowerCase();
-        const attemptsKey = `attempts_${cleanEmail}_${ip}`;
-        const attemptsRecord = await env.DB.prepare("SELECT attempt_count, last_attempt FROM login_rate_limit WHERE ip_key = ?").bind(attemptsKey).first();
-
-        if (attemptsRecord && attemptsRecord.attempt_count >= 5) {
-          const lastTime = new Date(attemptsRecord.last_attempt).getTime();
-          if (Date.now() - lastTime < 15 * 60 * 1000) {
-            return json({ error: "অতিরিক্ত ভুল চেষ্টার কারণে ১৫ মিনিটের জন্য লগইন স্থগিত করা হয়েছে।" }, 429);
-          } else {
-            await env.DB.prepare("DELETE FROM login_rate_limit WHERE ip_key = ?").bind(attemptsKey).run();
-          }
-        }
-
-        // Case-insensitive email search
-        const admin = await env.DB.prepare(
-          "SELECT id, email, password_hash, salt, role FROM admins WHERE LOWER(email) = LOWER(?)"
-        ).bind(cleanEmail).first();
-
-        if (!admin) {
-          await env.DB.prepare("INSERT INTO login_rate_limit (ip_key, attempt_count, last_attempt) VALUES (?, 1, datetime('now')) ON CONFLICT(ip_key) DO UPDATE SET attempt_count = attempt_count + 1, last_attempt = datetime('now')").bind(attemptsKey).run();
-          return json({ error: "ভুল ইমেইল অথবা পাসওয়ার্ড।" }, 401);
-        }
-
-        const calculatedHash = await hashPassword(password, admin.salt);
-        if (calculatedHash !== admin.password_hash) {
-          await env.DB.prepare("INSERT INTO login_rate_limit (ip_key, attempt_count, last_attempt) VALUES (?, 1, datetime('now')) ON CONFLICT(ip_key) DO UPDATE SET attempt_count = attempt_count + 1, last_attempt = datetime('now')").bind(attemptsKey).run();
-          return json({ error: "ভুল ইমেইল অথবা পাসওয়ার্ড।" }, 401);
-        }
-
-        await env.DB.prepare("DELETE FROM login_rate_limit WHERE ip_key = ?").bind(attemptsKey).run();
-
-        const sessionToken = generateRandomToken(32);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-        // Insert into sessions table
-        try {
-          await env.DB.prepare(
-            "INSERT OR REPLACE INTO sessions (token, admin_email, expires_at) VALUES (?, ?, datetime('now', '+7 days'))"
-          ).bind(sessionToken, admin.email).run();
-        } catch(e) {}
-
-        // Insert into admin_sessions table
-        try {
-          await env.DB.prepare(
-            "INSERT OR REPLACE INTO admin_sessions (admin_id, token, expires_at) VALUES (?, ?, ?)"
-          ).bind(admin.id, sessionToken, expiresAt).run();
-        } catch(e) {}
+        ctx.waitUntil(sendTelegramAlert(env, {
+          id: requestId,
+          patient_name,
+          requester_name,
+          requester_blood_group,
+          blood_group,
+          units,
+          hospital_name,
+          district,
+          thana,
+          location,
+          contact_phone: cleanPhone,
+          needed_by,
+          note
+        }, matchedDonors));
 
         return json({
           success: true,
-          token: sessionToken,
-          admin_email: admin.email,
-          admin: { email: admin.email, role: admin.role },
-          message: "লগইন সফল হয়েছে!"
-        }, 200, {
-          "Set-Cookie": `brybdpf_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`
+          message: "রক্তের অনুরোধটি সফলভাবে গ্রহণ করা হয়েছে! আমাদের স্বেচ্ছাসেবক ও সংশ্লিষ্ট রক্তদাতাদের স্বয়ংক্রিয় অ্যালার্ট পাঠানো হয়েছে।",
+          requestId
+        });
+      }
+
+      if (path === "/api/admin/check-setup" && method === "GET") {
+        const count = (await env.DB.prepare("SELECT COUNT(*) as c FROM admin_users").first())?.c || 0;
+        return json({ needsSetup: count === 0 });
+      }
+
+      if (path === "/api/admin/setup" && method === "POST") {
+        const count = (await env.DB.prepare("SELECT COUNT(*) as c FROM admin_users").first())?.c || 0;
+        if (count > 0) {
+          return json({ error: "অ্যাডমিন ইতিমধ্যে কনফিগার করা হয়েছে। লগইন করুন।" }, 400);
+        }
+
+        const { username, password, email } = await request.json();
+        if (!username || !password || password.length < 6) {
+          return json({ error: "ব্যবহারকারীর নাম ও কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।" }, 400);
+        }
+
+        const salt = crypto.randomUUID();
+        const encoder = new TextEncoder();
+        const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(password + salt));
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const passwordHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+        await env.DB.prepare(
+          "INSERT INTO admin_users (username, password_hash, salt, email, role) VALUES (?, ?, ?, ?, 'superadmin')"
+        ).bind(username.trim(), passwordHash, salt, (email || "").trim()).run();
+
+        const token = crypto.randomUUID();
+        const user = await env.DB.prepare("SELECT id FROM admin_users WHERE username = ?").bind(username.trim()).first();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        await env.DB.prepare(
+          "INSERT INTO admin_sessions (user_id, token, expires_at) VALUES (?, ?, ?)"
+        ).bind(user.id, token, expiresAt).run();
+
+        return json({ success: true, message: "অ্যাডমিন সফলভাবে তৈরি হয়েছে!", token });
+      }
+
+      if (path === "/api/admin/login" && method === "POST") {
+        const { username, password } = await request.json();
+        if (!username || !password) {
+          return json({ error: "ইউজারনেম এবং পাসওয়ার্ড দিন।" }, 400);
+        }
+
+        const cleanUsername = username.trim();
+        let user = await env.DB.prepare(
+          "SELECT * FROM admin_users WHERE username = ? OR email = ?"
+        ).bind(cleanUsername, cleanUsername.toLowerCase()).first();
+
+        if (!user) {
+          user = await env.DB.prepare(
+            "SELECT * FROM users WHERE username = ? OR email = ?"
+          ).bind(cleanUsername, cleanUsername.toLowerCase()).first();
+        }
+
+        if (!user) {
+          return json({ error: "ইউজারনেম বা পাসওয়ার্ড সঠিক নয়।" }, 401);
+        }
+
+        const encoder = new TextEncoder();
+        let isMatch = false;
+
+        if (user.salt) {
+          const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(password + user.salt));
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const passwordHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+          if (passwordHash === user.password_hash) isMatch = true;
+        }
+
+        if (!isMatch && user.password) {
+          const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(password));
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const rawHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+          if (rawHash === user.password || password === user.password) isMatch = true;
+        }
+
+        if (!isMatch) {
+          return json({ error: "ইউজারনেম বা পাসওয়ার্ড সঠিক নয়।" }, 401);
+        }
+
+        const token = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        await env.DB.prepare(
+          "INSERT INTO admin_sessions (user_id, token, expires_at) VALUES (?, ?, ?)"
+        ).bind(user.id, token, expiresAt).run();
+
+        return json({
+          success: true,
+          token,
+          user: { id: user.id, username: user.username, role: user.role }
         });
       }
 
       if (path === "/api/admin/logout" && method === "POST") {
-        const adminSession = await getAuthenticatedAdmin(request, env);
-        if (adminSession && adminSession.token) {
-          await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(adminSession.token).run();
+        const authHeader = request.headers.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          const token = authHeader.substring(7).trim();
           try {
-            await env.DB.prepare("DELETE FROM admin_sessions WHERE token = ?").bind(adminSession.token).run();
-          } catch(e) {}
+            await env.DB.prepare("DELETE FROM admin_sessions WHERE token = ?").bind(token).run();
+            await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+          } catch (e) {}
         }
-        return json({ success: true }, 200, {
-          "Set-Cookie": `brybdpf_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
-        });
+        return json({ success: true });
       }
 
       if (path.startsWith("/api/admin/")) {
-        const adminSession = await getAuthenticatedAdmin(request, env);
-        if (!adminSession) {
+        const admin = await getAuthenticatedAdmin(request, env);
+        if (!admin) {
           return json({ error: "অননুমোদিত অ্যাক্সেস। অনুগ্রহ করে লগইন করুন।" }, 401);
         }
 
         if (path === "/api/admin/data" && method === "GET") {
-          const [totalDonors, activeDonors, totalRequests, pendingRequests] = await Promise.all([
-            env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-            env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
-            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE (created_at >= datetime('now', '-10 days') OR created_at IS NULL)").first(),
-            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending' AND (created_at >= datetime('now', '-10 days') OR created_at IS NULL)").first()
-          ]);
+          const stats = await getPlatformStats(env);
+          const { results: recentRequests } = await env.DB.prepare(
+            "SELECT * FROM requests ORDER BY id DESC LIMIT 10"
+          ).all();
+          const { results: recentDonors } = await env.DB.prepare(
+            "SELECT * FROM donors ORDER BY id DESC LIMIT 10"
+          ).all();
 
           return json({
-            admin_email: adminSession.admin_email,
-            total_donors: totalDonors?.count || 0,
-            active_donors: activeDonors?.count || 0,
-            total_requests: totalRequests?.count || 0,
-            pending_requests: pendingRequests?.count || 0
+            stats,
+            recentRequests: recentRequests || [],
+            recentDonors: recentDonors || []
           });
         }
 
         if (path === "/api/admin/donors" && method === "GET") {
-          const bg = url.searchParams.get("blood_group") || "";
-          const search = url.searchParams.get("search") || "";
+          const page = parseInt(url.searchParams.get("page") || "1", 10);
+          const limit = 20;
+          const offset = (page - 1) * limit;
 
-          let query = "SELECT id, name, blood_group, phone, district, area, age, gender, last_donation_date, total_donations, is_available, created_at FROM donors WHERE 1=1";
+          const bg = url.searchParams.get("blood_group");
+          const dist = url.searchParams.get("district");
+          const q = url.searchParams.get("q");
+
+          let query = "SELECT * FROM donors WHERE 1=1";
           const params = [];
 
-          if (bg && bg !== "ALL") {
-            query += " AND blood_group = ?";
-            params.push(bg);
-          }
+          if (bg) { query += " AND blood_group = ?"; params.push(bg.toUpperCase()); }
+          if (dist) { query += " AND district = ?"; params.push(dist); }
+          if (q) { query += " AND (name LIKE ? OR phone LIKE ? OR area LIKE ?)"; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
 
-          if (search && search.trim()) {
-            query += " AND (name LIKE ? OR phone LIKE ? OR district LIKE ? OR area LIKE ?)";
-            const s = `%${search.trim()}%`;
-            params.push(s, s, s, s);
-          }
+          const countQuery = query.replace("SELECT *", "SELECT COUNT(*) as c");
+          const totalCount = (await env.DB.prepare(countQuery).bind(...params).first())?.c || 0;
 
-          query += " ORDER BY id DESC LIMIT 100";
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          return json({ donors: results || [] });
+          query += " ORDER BY id DESC LIMIT ? OFFSET ?";
+          params.push(limit, offset);
+
+          const { results: donors } = await env.DB.prepare(query).bind(...params).all();
+
+          return json({
+            donors: donors || [],
+            total: totalCount,
+            page,
+            totalPages: Math.ceil(totalCount / limit)
+          });
         }
 
-        if (path.match(/^\/api\/admin\/donors\/\d+\/toggle$/) && method === "POST") {
-          const id = path.split("/")[4];
-          await env.DB.prepare("UPDATE donors SET is_available = CASE WHEN is_available = 1 THEN 0 ELSE 1 END WHERE id = ?").bind(id).run();
-          return json({ success: true });
+        if (path.startsWith("/api/admin/donors/") && path.endsWith("/toggle") && method === "POST") {
+          const donorId = path.split("/")[4];
+          const donor = await env.DB.prepare("SELECT is_active FROM donors WHERE id = ?").bind(donorId).first();
+          if (!donor) return json({ error: "ডোনার পাওয়া যায়নি" }, 404);
+
+          const newStatus = donor.is_active ? 0 : 1;
+          await env.DB.prepare("UPDATE donors SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(newStatus, donorId).run();
+          return json({ success: true, is_active: newStatus });
         }
 
-        if (path.match(/^\/api\/admin\/donors\/\d+$/) && method === "DELETE") {
-          const id = path.split("/")[4];
-          await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(id).run();
+        if (path.startsWith("/api/admin/donors/") && method === "DELETE") {
+          const donorId = path.split("/")[4];
+          await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(donorId).run();
           return json({ success: true });
         }
 
         if (path === "/api/admin/requests" && method === "GET") {
-          const status = url.searchParams.get("status") || "ALL";
-          const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-          const limit = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)), 50);
+          const page = parseInt(url.searchParams.get("page") || "1", 10);
+          const limit = 10;
           const offset = (page - 1) * limit;
 
-          // Filter by last 10 days (or records with null timestamp)
-          let whereClause = "WHERE (created_at >= datetime('now', '-10 days') OR created_at IS NULL)";
+          const days = parseInt(url.searchParams.get("days") || "10", 10);
+          const status = url.searchParams.get("status");
+
+          let query = "SELECT * FROM requests WHERE 1=1";
           const params = [];
 
-          const validStatuses = ["Pending", "Matched", "Fulfilled", "Closed"];
-          if (status && status !== "ALL" && validStatuses.includes(status)) {
-            whereClause += " AND status = ?";
+          if (days > 0) {
+            query += " AND created_at >= datetime('now', '-' || ? || ' days')";
+            params.push(days);
+          }
+
+          if (status && ["pending", "completed", "cancelled"].includes(status)) {
+            query += " AND status = ?";
             params.push(status);
           }
 
-          // Count total in last 10 days
-          const countQuery = "SELECT count(*) as total FROM blood_requests " + whereClause;
-          const countStmt = params.length > 0 ? env.DB.prepare(countQuery).bind(...params) : env.DB.prepare(countQuery);
-          const totalRes = await countStmt.first();
-          const total = totalRes ? totalRes.total : 0;
+          const countQuery = query.replace("SELECT *", "SELECT COUNT(*) as c");
+          const totalCount = (await env.DB.prepare(countQuery).bind(...params).first())?.c || 0;
 
-          // Paginated records (max 10 per page)
-          const dataQuery = "SELECT * FROM blood_requests " + whereClause + " ORDER BY id DESC LIMIT ? OFFSET ?";
-          const dataParams = [...params, limit, offset];
-          const dataStmt = env.DB.prepare(dataQuery).bind(...dataParams);
-          const { results } = await dataStmt.all();
+          query += " ORDER BY id DESC LIMIT ? OFFSET ?";
+          params.push(limit, offset);
+
+          const { results: requests } = await env.DB.prepare(query).bind(...params).all();
 
           return json({
-            requests: results || [],
-            total,
+            requests: requests || [],
+            total: totalCount,
             page,
-            limit,
-            total_pages: Math.ceil(total / limit) || 1,
-            days_limit: 10
+            totalPages: Math.ceil(totalCount / limit)
           });
         }
 
-        if (path.match(/^\/api\/admin\/requests\/\d+\/status$/) && method === "PATCH") {
-          const id = path.split("/")[4];
+        if (path.startsWith("/api/admin/requests/") && path.endsWith("/match-donors") && method === "GET") {
+          const parts = path.split("/");
+          const reqId = parts[4];
+          const reqItem = await env.DB.prepare("SELECT * FROM requests WHERE id = ?").bind(reqId).first();
+          if (!reqItem) return json({ error: "অনুরোধ পাওয়া যায়নি" }, 404);
+
+          const donors = await findSmartMatchingDonors(env, reqItem.blood_group, reqItem.district, reqItem.thana, 10);
+          return json({ request: reqItem, donors });
+        }
+
+        if (path.startsWith("/api/admin/requests/") && path.endsWith("/status") && method === "POST") {
+          const reqId = path.split("/")[4];
           const { status } = await request.json();
-          const validStatuses = ["Pending", "Matched", "Fulfilled", "Closed"];
-          if (!validStatuses.includes(status)) {
-            return json({ error: "অবৈধ স্ট্যাটাস।" }, 400);
+
+          if (!["pending", "completed", "cancelled"].includes(status)) {
+            return json({ error: "অবৈধ স্ট্যাটাস" }, 400);
           }
-          await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(status, id).run();
+
+          await env.DB.prepare(
+            "UPDATE requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          ).bind(status, reqId).run();
+
           return json({ success: true, status });
         }
 
-        if (path.match(/^\/api\/admin\/requests\/\d+\/match-donors$/) && method === "GET") {
-          const id = path.split("/")[4];
-          const req = await env.DB.prepare("SELECT * FROM blood_requests WHERE id = ?").bind(id).first();
-          if (!req) return json({ error: "রিকোয়েস্ট পাওয়া যায়নি।" }, 404);
-
-          const reqThana = (req.thana || "").trim();
-          const reqDist = (req.district || "রংপুর").trim();
-
-          const { results } = await env.DB.prepare(`
-            SELECT id, name, blood_group, district, area, phone, age,
-              (CASE 
-                WHEN district = ? AND area LIKE ? AND ? != '' THEN 1
-                WHEN district = ? THEN 2
-                ELSE 3
-              END) as proximity_tier
-            FROM donors 
-            WHERE blood_group = ? AND is_available = 1 
-            ORDER BY proximity_tier ASC, id DESC LIMIT 20
-          `).bind(reqDist, `%${reqThana}%`, reqThana, reqDist, req.blood_group).all();
-
-          return json({
-            request_id: req.id,
-            patient_name: req.patient_name,
-            blood_group: req.blood_group,
-            district: req.district,
-            thana: req.thana,
-            hospital_name: req.hospital_name,
-            contact_phone: req.contact_phone,
-            donors: results || []
-          });
-        }
-
         if (path === "/api/admin/settings" && method === "GET") {
-          const { results } = await env.DB.prepare("SELECT key, value FROM admin_settings").all();
-          const map = {};
-          (results || []).forEach(r => {
-            if (r.key === "telegram_bot_token") {
-              map["telegram_bot_token_masked"] = r.value ? r.value.slice(0, 6) + "..." + r.value.slice(-4) : "";
-            } else {
-              map[r.key] = r.value;
-            }
-          });
-          return json(map);
+          const { results: settings } = await env.DB.prepare("SELECT key, value FROM admin_settings").all();
+          const settingsMap = {};
+          for (const s of (settings || [])) {
+            settingsMap[s.key] = s.value;
+          }
+          return json(settingsMap);
         }
 
         if (path === "/api/admin/settings" && method === "POST") {
-          const { telegram_bot_token, telegram_admin_uids } = await request.json();
-
-          if (telegram_bot_token && telegram_bot_token.trim()) {
-            await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_bot_token', ?)")
-              .bind(telegram_bot_token.trim())
-              .run();
+          const data = await request.json();
+          for (const [key, value] of Object.entries(data)) {
+            const existing = await env.DB.prepare("SELECT id FROM admin_settings WHERE key = ?").bind(key).first();
+            if (existing) {
+              await env.DB.prepare("UPDATE admin_settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?").bind(String(value || ""), key).run();
+            } else {
+              await env.DB.prepare("INSERT INTO admin_settings (key, value) VALUES (?, ?)").bind(key, String(value || "")).run();
+            }
           }
 
-          if (telegram_admin_uids !== undefined) {
-            await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_admin_uids', ?)")
-              .bind(telegram_admin_uids.trim())
-              .run();
+          if (data.telegram_bot_token) {
+            try {
+              const host = url.origin;
+              const webhookUrl = `${host}/api/telegram/webhook`;
+              await fetch(`https://api.telegram.org/bot${data.telegram_bot_token}/setWebhook`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  url: webhookUrl,
+                  drop_pending_updates: false,
+                  allowed_updates: ["message", "callback_query"]
+                })
+              });
+            } catch (e) {}
           }
 
-          return json({ success: true });
+          return json({ success: true, message: "সেটিংস সংরক্ষিত হয়েছে!" });
         }
 
         if (path === "/api/admin/change-password" && method === "POST") {
           const { current_password, new_password } = await request.json();
-          if (!current_password || !new_password || new_password.length < 8) {
-            return json({ error: "বর্তমান পাসওয়ার্ড এবং কমপক্ষে ৮ অক্ষরের নতুন পাসওয়ার্ড দিন।" }, 400);
+          if (!new_password || new_password.length < 6) {
+            return json({ error: "কমপক্ষে ৬ অক্ষরের নতুন পাসওয়ার্ড দিন।" }, 400);
           }
 
-          const admin = await env.DB.prepare("SELECT id, password_hash, salt FROM admins WHERE LOWER(email) = LOWER(?)").bind(adminSession.admin_email).first();
-          if (!admin) return json({ error: "অ্যাডমিন ব্যবহারকারী পাওয়া যায়নি।" }, 404);
+          const user = await env.DB.prepare("SELECT * FROM admin_users WHERE id = ?").bind(admin.id).first();
+          if (!user) return json({ error: "ব্যবহারকারী পাওয়া যায়নি" }, 404);
 
-          const calcCurrentHash = await hashPassword(current_password, admin.salt);
-          if (calcCurrentHash !== admin.password_hash) {
-            return json({ error: "বর্তমান পাসওয়ার্ড সঠিক নয়।" }, 401);
+          const encoder = new TextEncoder();
+          const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(current_password + user.salt));
+          const currentHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+          if (currentHash !== user.password_hash) {
+            return json({ error: "বর্তমান পাসওয়ার্ড সঠিক নয়।" }, 400);
           }
 
-          const newSalt = generateRandomToken(16);
-          const newHash = await hashPassword(new_password, newSalt);
+          const newSalt = crypto.randomUUID();
+          const newHashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(new_password + newSalt));
+          const newPasswordHash = Array.from(new Uint8Array(newHashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-          await env.DB.prepare("UPDATE admins SET password_hash = ?, salt = ?, updated_at = datetime('now') WHERE id = ?").bind(newHash, newSalt, admin.id).run();
+          await env.DB.prepare(
+            "UPDATE admin_users SET password_hash = ?, salt = ? WHERE id = ?"
+          ).bind(newPasswordHash, newSalt, admin.id).run();
+
           return json({ success: true, message: "পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!" });
         }
 
         if (path === "/api/admin/test-telegram" && method === "POST") {
           const testRequest = {
-            patient_name: "টেস্ট রোগী",
+            id: 9999,
+            patient_name: "পরীক্ষামূলক রোগী",
             blood_group: "O+",
             units: 1,
-            hospital_name: "ঢাকা মেডিকেল কলেজ হাসপাতাল",
-            district: "ঢাকা",
-            location: "জরুরি বিভাগ",
+            hospital_name: "রংপুর মেডিকেল কলেজ হাসপাতাল",
+            district: "রংপুর",
+            thana: "কোতোয়ালী",
+            location: "মেডিকেল মোড়",
             contact_phone: "01700000000",
-            urgency: "Testing",
             needed_by: "জরুরি",
-            note: "BRYBDPF টেলিগ্রাম বট সফলভাবে কাজ করছে!"
+            note: "BRYBDPF টেলিগ্রাম বট ইন্টিগ্রেশন সফলভাবে কাজ করছে!"
           };
           const sampleDonors = [
-            { name: "করিম হোসেন", blood_group: "O+", district: "ঢাকা", area: "ধানমন্ডি", phone: "01711111111", proximity_tier: 1 },
-            { name: "রাকিব হাসান", blood_group: "O+", district: "ঢাকা", area: "মিরপুর", phone: "01822222222", proximity_tier: 2 }
+            { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", thana: "কোতোয়ালী", area: "মেডিকেল মোড়", phone: "01711111111", proximity_tier: 1 },
+            { name: "রাকিব হাসান", blood_group: "O+", district: "রংপুর", thana: "মিঠাপুকুর", area: "পায়রাবত্ব", phone: "01822222222", proximity_tier: 2 }
           ];
           await sendTelegramAlert(env, testRequest, sampleDonors);
-          return json({ success: true, message: "টেস্ট মেসেজ সফলভাবে পাঠানো হয়েছে! টেলিগ্রাম চেক করুন।" });
+          
+          try {
+            const { results } = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_admin_uids'").all();
+            const tokenRes = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'").first();
+            if (results && results.length > 0 && tokenRes) {
+              const uids = results[0].value.split(',').map(u => u.trim()).filter(Boolean);
+              for (const uid of uids) {
+                await tgSendMessage(tokenRes.value, uid, "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল বাটন</b> 🩸\nনিচের বাটনগুলো চেপে সরাসরি বটের ফিচারগুলো পরীক্ষা করুন:", getMainAdminKeyboard());
+              }
+            }
+          } catch(e) {}
+
+          return json({ success: true, message: "টেলিগ্রাম টেস্ট মেসেজ ও কন্ট্রোল বাটন পাঠানো হয়েছে! টেলিগ্রাম চেক করুন।" });
         }
       }
 
-      if (path === "/admin" || path === "/admin/") {
+      if (path === "/admin" || path === "/admin/" || path === "/admin.html") {
         if (env.ASSETS) {
-          return env.ASSETS.fetch(new Request(`${url.origin}/admin.html`, request));
+          let assetRes = await env.ASSETS.fetch(new Request(`${url.origin}/admin`, request));
+          if (assetRes.status >= 300 && assetRes.status < 400) {
+            const loc = assetRes.headers.get("Location");
+            if (loc) {
+              const target = new URL(loc, url.origin);
+              if (target.pathname !== "/admin" && target.pathname !== "/admin.html") {
+                assetRes = await env.ASSETS.fetch(new Request(target, request));
+              }
+            }
+          }
+          if (assetRes.status === 200) {
+            const h = new Headers(assetRes.headers);
+            h.set("Content-Type", "text/html; charset=UTF-8");
+            h.set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+            h.set("Pragma", "no-cache");
+            h.set("Expires", "0");
+            return new Response(assetRes.body, { status: 200, headers: h });
+          }
         }
         return context.next();
       }
