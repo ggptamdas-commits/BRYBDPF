@@ -124,20 +124,45 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const uids = adminUidsStr.split(",").map(u => u.trim()).filter(Boolean);
     if (uids.length === 0) return;
 
+    const reqCleanPhone = requestData.contact_phone.replace(/[^0-9]/g, "");
+    const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
+
     let donorText = "";
+    const inlineButtons = [];
+
     if (matchedDonors && matchedDonors.length > 0) {
-      donorText = matchedDonors.slice(0, 20).map((d, i) => {
+      donorText = matchedDonors.slice(0, 15).map((d, i) => {
         const cleanPhone = d.phone.replace(/[^0-9]/g, "");
         const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-        return `${i + 1}. <b>${d.name}</b> (${d.blood_group}) - ${d.district}, ${d.area}\n   📞 <a href="tel:${d.phone}">${d.phone}</a> | 💬 <a href="https://wa.me/${waNumber}">WhatsApp</a>`;
+        
+        // 1-Click WhatsApp pre-filled message with full patient & applicant info
+        const prefilledPrompt = `আসসালামু আলাইকুম ${d.name} ভাই,\\n` +
+          `BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে:\\n` +
+          `🩸 প্রয়োজনীয় রক্ত: ${requestData.blood_group} (${requestData.units} ব্যাগ)\\n` +
+          `👤 রোগী: ${requestData.patient_name}\\n` +
+          `🏥 হাসপাতাল: ${requestData.hospital_name}, ${requestData.district}\\n` +
+          `📍 ঠিকানা: ${requestData.location}\\n` +
+          `⏰ প্রয়োজনের সময়: ${requestData.needed_by}\\n` +
+          `━━━━━━━━━━━━━━━━\\n` +
+          `আবেদনকারী: ${requestData.requester_name || "স্বজন"}\\n` +
+          `📞 যোগাযোগের নম্বর: ${requestData.contact_phone}\\n` +
+          (requestData.note ? `📝 নোট: ${requestData.note}\\n` : "") +
+          `━━━━━━━━━━━━━━━━\\n` +
+          `রোগীর জীবন রক্ষায় আপনি কি রক্তদানে সহযোগিতা করতে পারবেন? অনুগ্রহ করে দ্রুত জানান।\\n` +
+          `- BRYBDPF ব্লাড নেটওয়ার্ক (https://brybdpf.pages.dev)`;
+
+        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledPrompt)}`;
+
+        if (i < 4) {
+          inlineButtons.push([{ text: `💬 WhatsApp: ${d.name} (${d.district})`, url: waUrl }]);
+        }
+
+        return `${i + 1}. <b>${d.name}</b> (${d.blood_group}) - ${d.district}, ${d.area}\n   📞 <a href="tel:${d.phone}">${d.phone}</a> | 💬 <a href="${waUrl}">WhatsApp বার্তা পাঠান</a>`;
       }).join("\n\n");
     } else {
       donorText = "⚠️ এই গ্রুপের কোনো সক্রিয় ডোনার তাৎক্ষণিকভাবে পাওয়া যায়নি।";
     }
 
-    const reqCleanPhone = requestData.contact_phone.replace(/[^0-9]/g, "");
-    const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
-    
     let shareMessage = `আসসালামু আলাইকুম, BRYBDPF থেকে আপনার কাঙ্ক্ষিত ${requestData.blood_group} রক্তের ডোনার তালিকা:\n\n`;
     if (matchedDonors && matchedDonors.length > 0) {
       shareMessage += matchedDonors.slice(0, 10).map((d, i) => `${i+1}. ${d.name} (${d.district}) - ${d.phone}`).join("\n");
@@ -161,11 +186,12 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       `📞 <b>যোগাযোগের নম্বর:</b> <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>\n` +
       (requestData.note ? `📝 <b>নোট:</b> ${requestData.note}\n` : "") +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📋 <b>রোগীর জন্য সম্ভাব্য ডোনার তালিকা (${requestData.blood_group}):</b>\n\n` +
+      `📋 <b>রোগীর জন্য প্রস্তুত ডোনার তালিকা (${requestData.blood_group}):</b>\n\n` +
       donorText + `\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚡ <b>এক ক্লিকে আবেদনকারীকে ডোনার লিস্ট পাঠান:</b>\n` +
-      `👉 <a href="${waShareUrl}">WhatsApp-এ ডোনার লিস্ট পাঠান</a>`;
+      `⚡ <b>আবেদনকারীকে ডোনার তালিকা পাঠাতে:</b> <a href="${waShareUrl}">WhatsApp শেয়ার</a>`;
+
+    inlineButtons.push([{ text: "⚡ আবেদনকারীকে WhatsApp-এ লিস্ট পাঠান", url: waShareUrl }]);
 
     for (const uid of uids) {
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -175,7 +201,8 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
           chat_id: uid,
           text: messageHtml,
           parse_mode: "HTML",
-          disable_web_page_preview: true
+          disable_web_page_preview: true,
+          reply_markup: { inline_keyboard: inlineButtons }
         })
       });
     }
@@ -205,6 +232,514 @@ async function getAuthenticatedAdmin(request, env) {
   return null;
 }
 
+const TELEGRAM_WEBHOOK_SECRET = "BRYBDPF_TG_SECURE_TOKEN_2026";
+
+async function tgSendMessage(token, chatId, text, inlineKeyboard = null, parseMode = "HTML") {
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: parseMode,
+    disable_web_page_preview: true
+  };
+  if (inlineKeyboard) {
+    payload.reply_markup = { inline_keyboard: inlineKeyboard };
+  }
+  return fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function tgEditMessage(token, chatId, messageId, text, inlineKeyboard = null, parseMode = "HTML") {
+  const payload = {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    parse_mode: parseMode,
+    disable_web_page_preview: true
+  };
+  if (inlineKeyboard) {
+    payload.reply_markup = { inline_keyboard: inlineKeyboard };
+  }
+  return fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function tgAnswerCallback(token, callbackQueryId, text = null) {
+  const payload = { callback_query_id: callbackQueryId };
+  if (text) payload.text = text;
+  return fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+function getMainAdminKeyboard() {
+  return [
+    [
+      { text: "📊 পরিসংখ্যান ও গ্রুপ ডাটা", callback_data: "cb:stats" },
+      { text: "🩸 গ্রুপভিত্তিক ডোনার", callback_data: "cb:groups" }
+    ],
+    [
+      { text: "📋 পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" },
+      { text: "💉 ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }
+    ],
+    [
+      { text: "🔍 ডোনার সার্চ / অ্যাকশন", callback_data: "cb:donor_search" },
+      { text: "🔄 রিফ্রেশ", callback_data: "cb:menu" }
+    ]
+  ];
+}
+
+async function handleTelegramUpdate(update, env, ctx) {
+  try {
+    let token = "";
+    let adminUidsStr = "";
+
+    await env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS bot_admin_states (admin_uid TEXT PRIMARY KEY, state TEXT, data TEXT, updated_at TEXT DEFAULT (datetime('now')))"
+    ).run();
+
+    const { results: settings } = await env.DB.prepare(
+      "SELECT key, value FROM admin_settings WHERE key IN ('telegram_bot_token', 'telegram_admin_uids')"
+    ).all();
+
+    for (const s of settings) {
+      if (s.key === "telegram_bot_token") token = s.value;
+      if (s.key === "telegram_admin_uids") adminUidsStr = s.value;
+    }
+
+    if (!token && env.TELEGRAM_BOT_TOKEN) token = env.TELEGRAM_BOT_TOKEN;
+    if (!adminUidsStr && env.TELEGRAM_ADMIN_IDS) adminUidsStr = env.TELEGRAM_ADMIN_IDS;
+
+    if (!token) return;
+
+    const allowedUids = (adminUidsStr || "").split(",").map(u => u.trim()).filter(Boolean);
+
+    // 1. Handle Callback Queries (Button Clicks)
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      const fromId = String(cq.from?.id || "");
+      const chatId = cq.message?.chat?.id;
+      const messageId = cq.message?.message_id;
+      const data = cq.data || "";
+
+      // Anti-Hijack Authorization Check
+      if (!allowedUids.includes(fromId)) {
+        await tgAnswerCallback(token, cq.id, "⛔ অননুমোদিত অ্যাক্সেস। আপনি অ্যাডমিন নন।");
+        return;
+      }
+
+      await tgAnswerCallback(token, cq.id);
+
+      if (data === "cb:menu") {
+        const text = "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল</b> 🩸\n━━━━━━━━━━━━━━━━━━━━\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:";
+        await tgEditMessage(token, chatId, messageId, text, getMainAdminKeyboard());
+        return;
+      }
+
+      if (data === "cb:stats") {
+        const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
+          env.DB.prepare("SELECT count(*) as count FROM donors").first(),
+          env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1").first(),
+          env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
+          env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE status = 'Pending'").first()
+        ]);
+
+        const { results: groupStats } = await env.DB.prepare(
+          "SELECT blood_group, count(*) as count, sum(CASE WHEN is_available = 1 THEN 1 ELSE 0 END) as avail FROM donors GROUP BY blood_group"
+        ).all();
+
+        const grpMap = {};
+        (groupStats || []).forEach(g => {
+          grpMap[g.blood_group] = { total: g.count, avail: g.avail || 0 };
+        });
+
+        const groups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+        let grpBreakdown = "";
+        groups.forEach(g => {
+          const item = grpMap[g] || { total: 0, avail: 0 };
+          grpBreakdown += `• <b>${g}</b>: মোট ${item.total} জন (প্রস্তুত: ${item.avail} জন)\n`;
+        });
+
+        const total = donorsRes?.count || 0;
+        const avail = availRes?.count || 0;
+        const onHold = total - avail;
+
+        const text = `📊 <b>BRYBDPF সামগ্রিক পরিসংখ্যান ও ডোনার ডাটা</b>\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `👥 <b>মোট নিবন্ধিত ডোনার:</b> ${total} জন\n` +
+          `✅ <b>রক্তদানে প্রস্তুত:</b> ${avail} জন\n` +
+          `⏸️ <b>বিশ্রামে / আন-অ্যাক্টিভ:</b> ${onHold} জন\n` +
+          `📋 <b>মোট রক্তের রিকোয়েস্ট:</b> ${reqRes?.count || 0} টি\n` +
+          `⏳ <b>অপেক্ষমাণ (Pending):</b> ${pendingRes?.count || 0} টি\n\n` +
+          `🩸 <b>গ্রুপ ভিত্তিক ডোনার সংখ্যা:</b>\n` +
+          grpBreakdown;
+
+        const kb = [
+          [{ text: "🩸 গ্রুপভিত্তিক ডোনার তালিকা", callback_data: "cb:groups" }],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ];
+
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data === "cb:groups") {
+        const text = "🩸 <b>কোন গ্রুপের ডোনারদের তথ্য দেখতে চান নির্বাচন করুন:</b>";
+        const kb = [
+          [
+            { text: "A+", callback_data: "cb:grp:A+" },
+            { text: "A-", callback_data: "cb:grp:A-" },
+            { text: "B+", callback_data: "cb:grp:B+" },
+            { text: "B-", callback_data: "cb:grp:B-" }
+          ],
+          [
+            { text: "AB+", callback_data: "cb:grp:AB+" },
+            { text: "AB-", callback_data: "cb:grp:AB-" },
+            { text: "O+", callback_data: "cb:grp:O+" },
+            { text: "O-", callback_data: "cb:grp:O-" }
+          ],
+          [
+            { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+          ]
+        ];
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data.startsWith("cb:grp:")) {
+        const bg = data.replace("cb:grp:", "");
+        const { results } = await env.DB.prepare(
+          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE blood_group = ? AND is_available = 1 ORDER BY id DESC LIMIT 8"
+        ).bind(bg).all();
+
+        let donorText = "";
+        const inlineKb = [];
+
+        if (!results || results.length === 0) {
+          donorText = `⚠️ <b>${bg}</b> গ্রুপের এই মুহূর্তে কোনো সক্রিয় ও প্রস্তুত ডোনার ডাটাবেজে পাওয়া যায়নি।`;
+        } else {
+          donorText = `🩸 <b>${bg} গ্রুপের প্রস্তুত ডোনার তালিকা (শীর্ষ ${results.length} জন):</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+          results.forEach((d, i) => {
+            const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
+            const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
+            donorText += `<b>${i + 1}. ${d.name}</b> (${d.district}, ${d.area})\n` +
+              `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার\n\n`;
+            
+            inlineKb.push([
+              { text: `💬 ${d.name}-কে WhatsApp মেসেজ`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent("আসসালামু আলাইকুম " + d.name + " ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে।")}` }
+            ]);
+          });
+        }
+
+        inlineKb.push([
+          { text: "🩸 অন্য গ্রুপ দেখুন", callback_data: "cb:groups" },
+          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+        ]);
+
+        await tgEditMessage(token, chatId, messageId, donorText, inlineKb);
+        return;
+      }
+
+      if (data === "cb:pending") {
+        const { results: pendingReqs } = await env.DB.prepare(
+          "SELECT * FROM blood_requests WHERE status = 'Pending' AND (created_at >= datetime('now', '-10 days') OR created_at IS NULL) ORDER BY id DESC LIMIT 5"
+        ).all();
+
+        if (!pendingReqs || pendingReqs.length === 0) {
+          const text = "✅ <b>বিগত ১০ দিনে কোনো অপেক্ষমাণ (Pending) রিকোয়েস্ট নেই।</b>\nসকল রিকোয়েস্ট সফলভাবে সম্পন্ন হয়েছে!";
+          const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+          await tgEditMessage(token, chatId, messageId, text, kb);
+          return;
+        }
+
+        const r = pendingReqs[0];
+        const count = pendingReqs.length;
+        const text = `🚨 <b>অপেক্ষমাণ রিকোয়েস্ট (${count} টির মধ্যে ১নং):</b>\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `🩸 <b>গ্রুপ:</b> <code>${r.blood_group}</code> (${r.units || 1} ব্যাগ)\n` +
+          `👤 <b>রোগী:</b> ${r.patient_name}\n` +
+          `🏥 <b>হাসপাতাল:</b> ${r.hospital_name}, ${r.district}\n` +
+          `📍 <b>ঠিকানা:</b> ${r.location}\n` +
+          `📞 <b>আবেদনকারী:</b> ${r.requester_name || "স্বজন"} (<a href="tel:${r.contact_phone}">${r.contact_phone}</a>)\n` +
+          `⏰ <b>প্রয়োজন:</b> ${r.needed_by}\n` +
+          (r.note ? `📝 <b>নোট:</b> ${r.note}\n` : "") +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `নিচের বাটন চেপে ডোনার তালিকা বের করুন অথবা স্ট্যাটাস পরিবর্তন করুন:`;
+
+        const kb = [
+          [{ text: `🔍 ${r.blood_group} ডোনার ও WhatsApp লিংক`, callback_data: `cb:req_donors:${r.id}` }],
+          [
+            { text: "🤝 Matched", callback_data: `cb:req_status:${r.id}:Matched` },
+            { text: "✅ Fulfilled", callback_data: `cb:req_status:${r.id}:Fulfilled` },
+            { text: "❌ Closed", callback_data: `cb:req_status:${r.id}:Closed` }
+          ],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ];
+
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data.startsWith("cb:req_status:")) {
+        const parts = data.split(":");
+        const reqId = parts[2];
+        const newStatus = parts[3];
+
+        await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(newStatus, reqId).run();
+
+        const text = `✅ <b>রিকোয়েস্ট #${reqId} সফলভাবে '${newStatus}' স্ট্যাটাসে আপডেট করা হয়েছে!</b>`;
+        const kb = [
+          [{ text: "📋 পরবর্তী পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" }],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ];
+
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data.startsWith("cb:req_donors:")) {
+        const reqId = data.replace("cb:req_donors:", "");
+        const req = await env.DB.prepare("SELECT * FROM blood_requests WHERE id = ?").bind(reqId).first();
+        if (!req) {
+          await tgAnswerCallback(token, cq.id, "রিকোয়েস্ট পাওয়া যায়নি।");
+          return;
+        }
+
+        const { results: donors } = await env.DB.prepare(
+          "SELECT name, blood_group, district, area, phone FROM donors WHERE blood_group = ? AND is_available = 1 ORDER BY (CASE WHEN district LIKE ? THEN 0 ELSE 1 END), id DESC LIMIT 6"
+        ).bind(req.blood_group, `%${req.district}%`).all();
+
+        let text = `📋 <b>রিকোয়েস্ট #${req.id} এর জন্য প্রস্তুত ডোনার তালিকা:</b>\n` +
+          `রোগী: ${req.patient_name} (${req.blood_group}) - ${req.hospital_name}\n━━━━━━━━━━━━━━━━━━━━\n`;
+
+        const kb = [];
+
+        if (!donors || donors.length === 0) {
+          text += "⚠️ এই মুহূর্তে এই গ্রুপের কোনো প্রস্তুত ডোনার পাওয়া যায়নি।";
+        } else {
+          donors.forEach((d, i) => {
+            const cleanPhone = d.phone.replace(/[^0-9]/g, "");
+            const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
+            
+            text += `<b>${i + 1}. ${d.name}</b> (${d.district}, ${d.area}) - <code>${d.phone}</code>\n`;
+
+            const prefilledText = `আসসালামু আলাইকুম ${d.name} ভাই,\n` +
+              `জরুরি প্রয়োজনে ${req.blood_group} (${req.units || 1} ব্যাগ) রক্তের প্রয়োজন।\n` +
+              `রোগী: ${req.patient_name}\n` +
+              `হাসপাতাল: ${req.hospital_name}, ${req.district}\n` +
+              `ঠিকানা: ${req.location}\n` +
+              `আবেদনকারী: ${req.requester_name || "স্বজন"} (${req.contact_phone})\n` +
+              `প্রয়োজনের সময়: ${req.needed_by}\n\n` +
+              `আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n- BRYBDPF ব্লাড নেটওয়ার্ক`;
+
+            kb.push([
+              { text: `💬 WhatsApp: ${d.name}`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledText)}` }
+            ]);
+          });
+        }
+
+        kb.push([
+          { text: "🤝 Matched মার্ক করুন", callback_data: `cb:req_status:${req.id}:Matched` },
+          { text: "✅ Fulfilled মার্ক করুন", callback_data: `cb:req_status:${req.id}:Fulfilled` }
+        ]);
+        kb.push([
+          { text: "📋 পেন্ডিং তালিকায় ফিরুন", callback_data: "cb:pending" },
+          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+        ]);
+
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data === "cb:mark_donation") {
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_donation_phone', datetime('now'))"
+        ).bind(fromId).run();
+
+        const text = `💉 <b>রক্তদান সম্পন্ন (Donated) মার্ক করুন</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+          `যে ডোনার রক্তদান সম্পন্ন করেছেন, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান (যেমন: <code>017XXXXXXXX</code>):\n\n` +
+          `<i>ℹ️ নিয়ম: পুরুষদের ক্ষেত্রে স্বয়ংক্রিয়ভাবে ৯০ দিন (৩ মাস) এবং নারীদের ক্ষেত্রে ১২০ দিন (৪ মাস) ডোনার রেস্টে থাকবে এবং এই সময়ে তাকে প্রস্তুত তালিকায় দেখানো হবে না।</i>`;
+
+        const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data === "cb:donor_search") {
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, updated_at) VALUES (?, 'waiting_for_search_phone', datetime('now'))"
+        ).bind(fromId).run();
+
+        const text = `🔍 <b>ডোনার অনুসন্ধান ও ব্যবস্থা গ্রহণ</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+          `যে ডোনারের বিস্তারিত তথ্য দেখতে চান অথবা যার বিরুদ্ধে কোনো অভিযোগ রয়েছে, তার <b>মোবাইল নম্বরটি</b> লিখে পাঠান:`;
+
+        const kb = [[{ text: "❌ বাতিল করুন", callback_data: "cb:menu" }]];
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data.startsWith("cb:donor_delete:")) {
+        const donorId = data.replace("cb:donor_delete:", "");
+        await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(donorId).run();
+        const text = `🗑️ <b>ডোনার (ID #${donorId}) সফলভাবে ডাটাবেজ থেকে মুছে ফেলা হয়েছে!</b>`;
+        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data.startsWith("cb:donor_suspend:")) {
+        const parts = data.split(":");
+        const donorId = parts[2];
+        const days = parseInt(parts[3] || "90", 10);
+
+        await env.DB.prepare(
+          "UPDATE donors SET is_available = 0, last_donation_date = CURRENT_DATE WHERE id = ? "
+        ).bind(donorId).run();
+
+        const text = `⏸️ <b>ডোনার (ID #${donorId}) কে সফলভাবে ${days} দিনের জন্য সাময়িক সাসপেন্ড করা হয়েছে!</b>\nএই সময়ের মধ্যে কোনো অ্যালার্ট বা সার্চে তার তথ্য আসবে না।`;
+        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+
+      if (data.startsWith("cb:donor_reactivate:")) {
+        const donorId = data.replace("cb:donor_reactivate:", "");
+        await env.DB.prepare(
+          "UPDATE donors SET is_available = 1 WHERE id = ?"
+        ).bind(donorId).run();
+
+        const text = `✅ <b>ডোনার (ID #${donorId}) সফলভাবে পুনরায় সক্রিয় (Active) করা হয়েছে!</b>`;
+        const kb = [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+        await tgEditMessage(token, chatId, messageId, text, kb);
+        return;
+      }
+    }
+
+    // 2. Handle Text Messages
+    if (update.message) {
+      const msg = update.message;
+      const fromId = String(msg.from?.id || "");
+      const chatId = msg.chat?.id;
+      const text = (msg.text || "").trim();
+
+      // Anti-Hijack Authorization Check
+      if (!allowedUids.includes(fromId)) {
+        await tgSendMessage(token, chatId, "⛔ <b>অননুমোদিত অ্যাক্সেস।</b>\nআপনি এই বটের অনুমোদিত অ্যাডমিন তালিকায় নেই।");
+        return;
+      }
+
+      const adminStateRecord = await env.DB.prepare(
+        "SELECT state, data FROM bot_admin_states WHERE admin_uid = ?"
+      ).bind(fromId).first();
+
+      const currentState = adminStateRecord ? adminStateRecord.state : "";
+
+      if (text === "/start" || text === "/menu" || text === "মেনু") {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
+        const welcomeText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল প্যানেল</b> 🩸\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `আসসালামু আলাইকুম! নিচের আধুনিক বাটনগুলো ব্যবহার করে রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:`;
+        await tgSendMessage(token, chatId, welcomeText, getMainAdminKeyboard());
+        return;
+      }
+
+      if (currentState === "waiting_for_donation_phone") {
+        const cleanPhone = text.replace(/[^0-9]/g, "");
+        if (cleanPhone.length < 10) {
+          await tgSendMessage(token, chatId, "❌ অনুগ্রহ করে সঠিক ১১ ডিজিটের মোবাইল নম্বর লিখুন (উদাঃ 017XXXXXXXX):");
+          return;
+        }
+
+        const donor = await env.DB.prepare(
+          "SELECT * FROM donors WHERE phone LIKE ? OR phone LIKE ?"
+        ).bind(`%${cleanPhone.slice(-10)}%`, cleanPhone).first();
+
+        if (!donor) {
+          await tgSendMessage(token, chatId, `❌ <code>${text}</code> নম্বরে কোনো নিবন্ধিত ডোনার পাওয়া যায়নি। আবার চেষ্টা করুন অথবা /menu চাপুন:`);
+          return;
+        }
+
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
+
+        const isFemale = (donor.gender || "").toLowerCase() === "female" || donor.gender === "নারী";
+        const cooldownDays = isFemale ? 120 : 90;
+
+        await env.DB.prepare(`
+          UPDATE donors SET
+            is_available = 0,
+            last_donation_date = CURRENT_DATE,
+            total_donations = COALESCE(total_donations, 0) + 1
+          WHERE id = ?
+        `).bind(donor.id).run();
+
+        const respText = `✅ <b>রক্তদান সফলভাবে রেকর্ড সম্পন্ন!</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+          `👤 <b>ডোনার:</b> ${donor.name} (<code>${donor.blood_group}</code>)\n` +
+          `📞 <b>ফোন:</b> <code>${donor.phone}</code>\n` +
+          `🚻 <b>লিঙ্গ:</b> ${isFemale ? "নারী" : "পুরুষ"} (বিশ্রামকাল: <b>${cooldownDays} দিন</b>)\n` +
+          `🩸 <b>সর্বমোট রক্তদান:</b> ${(donor.total_donations || 0) + 1} বার\n\n` +
+          `<i>আগামী ${cooldownDays} দিনের জন্য এই রক্তদাতাকে স্বয়ংক্রিয়ভাবে আন-অ্যাক্টিভ (বিশ্রামরত) রাখা হয়েছে।</i>`;
+
+        await tgSendMessage(token, chatId, respText, [
+          [{ text: "💉 আরেকটি ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ]);
+        return;
+      }
+
+      if (currentState === "waiting_for_search_phone") {
+        const cleanPhone = text.replace(/[^0-9]/g, "");
+        const donor = await env.DB.prepare(
+          "SELECT * FROM donors WHERE phone LIKE ? OR phone LIKE ?"
+        ).bind(`%${cleanPhone.slice(-10)}%`, cleanPhone).first();
+
+        if (!donor) {
+          await tgSendMessage(token, chatId, `❌ <code>${text}</code> নম্বরে কোনো ডোনার পাওয়া যায়নি। আবার সঠিক নম্বর লিখুন অথবা /menu লিখুন:`);
+          return;
+        }
+
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(fromId).run();
+
+        const isAvail = donor.is_available === 1;
+        const respText = `👤 <b>ডোনার প্রোফাইল ও বিস্তারিত তথ্য:</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+          `<b>নাম:</b> ${donor.name}\n` +
+          `<b>রক্তের গ্রুপ:</b> <code>${donor.blood_group}</code>\n` +
+          `<b>মোবাইল নম্বর:</b> <code>${donor.phone}</code>\n` +
+          `<b>ঠিকানা:</b> ${donor.district}, ${donor.area}\n` +
+          `<b>বয়স ও লিঙ্গ:</b> ${donor.age || "-"} বছর | ${donor.gender || "Male"}\n` +
+          `<b>স্ট্যাটাস:</b> ${isAvail ? "🟢 সক্রিয় ও প্রস্তুত" : "🔴 সাময়িক অনুপলব্ধ / বিশ্রামে"}\n` +
+          `<b>মোট রক্তদান:</b> ${donor.total_donations || 0} বার\n` +
+          `<b>সর্বশেষ রক্তদান:</b> ${donor.last_donation_date || "তথ্য নেই"}\n\n` +
+          `ব্যবস্থা গ্রহণ করতে নিচের অ্যাকশন বাটন ব্যবহার করুন:`;
+
+        const kb = [
+          [
+            { text: isAvail ? "⏸️ ৯০ দিন সাসপেন্ড" : "✅ পুনরায় সক্রিয় করুন", callback_data: isAvail ? `cb:donor_suspend:${donor.id}:90` : `cb:donor_reactivate:${donor.id}` },
+            { text: "🗑️ স্থায়ীভাবে মুছুন", callback_data: `cb:donor_delete:${donor.id}` }
+          ],
+          [
+            { text: "🔍 অন্য ডোনার খুঁজুন", callback_data: "cb:donor_search" },
+            { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+          ]
+        ];
+
+        await tgSendMessage(token, chatId, respText, kb);
+        return;
+      }
+
+      await tgSendMessage(token, chatId, "🩸 মেনু দেখতে নিচের বাটনে ক্লিক করুন অথবা /menu লিখুন:", getMainAdminKeyboard());
+    }
+  } catch (err) {
+    console.error("Telegram bot error:", err);
+  }
+}
+
 export async function onRequest(context) {
   const request = context.request;
   const env = context.env;
@@ -229,6 +764,44 @@ export async function onRequest(context) {
     }
 
       if (method === "OPTIONS") return json({ ok: true });
+
+      if (path === "/api/telegram/webhook" && method === "POST") {
+        try {
+          const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+          if (secret && secret !== TELEGRAM_WEBHOOK_SECRET) {
+            return json({ error: "Invalid secret token" }, 403);
+          }
+          const update = await request.json();
+          ctx.waitUntil(handleTelegramUpdate(update, env, ctx));
+          return json({ ok: true });
+        } catch (e) {
+          return json({ ok: true });
+        }
+      }
+
+      if (path === "/api/telegram/setup-webhook" && method === "POST") {
+        const adminSession = await getAuthenticatedAdmin(request, env);
+        if (!adminSession) return json({ error: "Unauthorized" }, 401);
+
+        const { results } = await env.DB.prepare(
+          "SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'"
+        ).all();
+        const token = results && results.length > 0 ? results[0].value : env.TELEGRAM_BOT_TOKEN;
+        if (!token) return json({ error: "টেলিগ্রাম বট টোকেন সেট করা নেই।" }, 400);
+
+        const webhookUrl = `${url.origin}/api/telegram/webhook`;
+        const tgRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: webhookUrl,
+            secret_token: TELEGRAM_WEBHOOK_SECRET,
+            allowed_updates: ["message", "callback_query"]
+          })
+        });
+        const tgData = await tgRes.json();
+        return json({ success: tgData.ok, message: tgData.description || "ওয়েবহুক সফলভাবে কনফিগার হয়েছে!", webhook_url: webhookUrl });
+      }
 
       if (path === "/api/captcha" && method === "GET") {
         const captcha = await generateCaptcha();
@@ -476,9 +1049,26 @@ export async function onRequest(context) {
           .run();
 
         if (telegram_token && telegram_token.trim()) {
+          const cleanToken = telegram_token.trim();
           await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_bot_token', ?)")
-            .bind(telegram_token.trim())
+            .bind(cleanToken)
             .run();
+
+          // Auto-configure Webhook with Telegram
+          try {
+            const webhookUrl = `${url.origin}/api/telegram/webhook`;
+            await fetch(`https://api.telegram.org/bot${cleanToken}/setWebhook`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: webhookUrl,
+                secret_token: TELEGRAM_WEBHOOK_SECRET,
+                allowed_updates: ["message", "callback_query"]
+              })
+            });
+          } catch (tgErr) {
+            console.error("Auto webhook setup error:", tgErr);
+          }
         }
 
         if (telegram_uids && telegram_uids.trim()) {
@@ -611,7 +1201,6 @@ export async function onRequest(context) {
           const limit = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)), 50);
           const offset = (page - 1) * limit;
 
-          // Filter by last 10 days (or records with null timestamp)
           let whereClause = "WHERE (created_at >= datetime('now', '-10 days') OR created_at IS NULL)";
           const params = [];
 
@@ -621,13 +1210,11 @@ export async function onRequest(context) {
             params.push(status);
           }
 
-          // Count total in last 10 days
           const countQuery = "SELECT count(*) as total FROM blood_requests " + whereClause;
           const countStmt = params.length > 0 ? env.DB.prepare(countQuery).bind(...params) : env.DB.prepare(countQuery);
           const totalRes = await countStmt.first();
           const total = totalRes ? totalRes.total : 0;
 
-          // Paginated records (max 10 per page)
           const dataQuery = "SELECT * FROM blood_requests " + whereClause + " ORDER BY id DESC LIMIT ? OFFSET ?";
           const dataParams = [...params, limit, offset];
           const dataStmt = env.DB.prepare(dataQuery).bind(...dataParams);
@@ -691,9 +1278,25 @@ export async function onRequest(context) {
           const { telegram_bot_token, telegram_admin_uids } = await request.json();
 
           if (telegram_bot_token && telegram_bot_token.trim()) {
+            const cleanToken = telegram_bot_token.trim();
             await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_bot_token', ?)")
-              .bind(telegram_bot_token.trim())
+              .bind(cleanToken)
               .run();
+
+            try {
+              const webhookUrl = `${url.origin}/api/telegram/webhook`;
+              await fetch(`https://api.telegram.org/bot${cleanToken}/setWebhook`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  url: webhookUrl,
+                  secret_token: TELEGRAM_WEBHOOK_SECRET,
+                  allowed_updates: ["message", "callback_query"]
+                })
+              });
+            } catch (tgErr) {
+              console.error("Auto webhook setup error:", tgErr);
+            }
           }
 
           if (telegram_admin_uids !== undefined) {
@@ -743,7 +1346,19 @@ export async function onRequest(context) {
             { name: "রাকিব হাসান", blood_group: "O+", district: "ঢাকা", area: "মিরপুর", phone: "01822222222" }
           ];
           await sendTelegramAlert(env, testRequest, sampleDonors);
-          return json({ success: true, message: "টেলিগ্রাম টেস্ট মেসেজ পাঠানো হয়েছে! অনুগ্রহ করে টেলিগ্রাম চেক করুন।" });
+          
+          try {
+            const { results } = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_admin_uids'").all();
+            const tokenRes = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'").first();
+            if (results && results.length > 0 && tokenRes) {
+              const uids = results[0].value.split(',').map(u => u.trim()).filter(Boolean);
+              for (const uid of uids) {
+                await tgSendMessage(tokenRes.value, uid, "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল বাটন</b> 🩸\nনিচের বাটনগুলো চেপে সরাসরি বটের ফিচারগুলো পরীক্ষা করুন:", getMainAdminKeyboard());
+              }
+            }
+          } catch(e) {}
+
+          return json({ success: true, message: "টেলিগ্রাম টেস্ট মেসেজ ও কন্ট্রোল বাটন পাঠানো হয়েছে! টেলিগ্রাম চেক করুন।" });
         }
       }
 
