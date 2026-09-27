@@ -131,13 +131,21 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const inlineButtons = [];
 
     // 1. WhatsApp message for the REQUESTER (containing list of matched donors)
-    let shareToRequester = `আসসালামু আলাইকুম, BRYBDPF থেকে আপনার কাঙ্ক্ষিত ${requestData.blood_group} রক্তের ডোনারদের তালিকা:\n\n`;
+    let shareToRequester = `🩸 *রক্তদাতাদের তালিকা — BRYBDPF* 🩸\n` +
+      `───────────────────────\n` +
+      `আসসালামু আলাইকুম,\n` +
+      `রোগীর জরুরি প্রয়োজনে *${requestData.blood_group}* গ্রুপের রক্তদাতাদের তালিকা নিচে দেওয়া হলো:\n\n`;
     if (matchedDonors && matchedDonors.length > 0) {
-      shareToRequester += matchedDonors.slice(0, 10).map((d, i) => `${i + 1}. ${d.name} (${d.district}) - ${d.phone}`).join("\n");
-      shareToRequester += "\n\nদ্রুত যোগাযোগ করে রোগীর জীবন রক্ষায় সহযোগিতা নিন।\n- BRYBDPF ব্লাড নেটওয়ার্ক";
+      shareToRequester += matchedDonors.slice(0, 10).map((d, i) =>
+        `${i + 1}. *${d.name}* (${d.district})\n   📞 কল করুন: *${d.phone}*`
+      ).join("\n\n");
+      shareToRequester += "\n\n───────────────────────\n" +
+        "💡 *পরামর্শ:* রক্তদাতাদের সাথে দ্রুত সরাসরি ফোনে কথা বলে সময় ও স্থান নিশ্চিত করুন।\n" +
+        "🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।";
     } else {
-      shareToRequester += "দুঃখিত, এই মুহূর্তে এই গ্রুপের কোনো সক্রিয় ডোনার পাওয়া যায়নি। আমরা আরও অনুসন্ধানের চেষ্টা করছি।";
+      shareToRequester += "⚠️ এই মুহূর্তে প্রস্তুত কোনো রক্তদাতা পাওয়া যায়নি। আমরা আরও অনুসন্ধানের চেষ্টা করছি।";
     }
+    shareToRequester += `\n\n🌐 *BRYBDPF মানবিক ব্লাড নেটওয়ার্ক*\n🔗 https://brybdpf.pages.dev`;
     const waShareUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareToRequester)}`;
 
     // Top Action Button: Send Donors List to Requester
@@ -149,20 +157,25 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
         const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
         const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
         
-        const promptForDonor = `আসসালামু আলাইকুম ${d.name} ভাই,\n` +
-          `BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে:\n` +
-          `🩸 প্রয়োজনীয় রক্ত: ${requestData.blood_group} (${requestData.units || 1} ব্যাগ)\n` +
-          `👤 রোগী: ${requestData.patient_name}\n` +
-          `🏥 হাসপাতাল: ${requestData.hospital_name}, ${requestData.district}\n` +
-          `📍 ঠিকানা: ${requestData.location}\n` +
-          `⏰ সময়সীমা: ${requestData.needed_by}\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `আবেদনকারী: ${requestData.requester_name || "স্বজন"}\n` +
-          `📞 যোগাযোগের নম্বর: ${requestData.contact_phone}\n` +
-          (requestData.note ? `📝 নোট: ${requestData.note}\n` : "") +
-          `━━━━━━━━━━━━━━━━\n` +
-          `রোগীর জীবন রক্ষায় আপনি কি রক্তদান করতে পারবেন? অনুগ্রহ করে দ্রুত জানান।\n- BRYBDPF`;
-
+        const promptForDonor = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
+          `───────────────────────\n` +
+          `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
+          `এক মুমূর্ষু রোগীর জীবন রক্ষায় আপনার গ্রুপের (*${requestData.blood_group}*) রক্ত জরুরি প্রয়োজন।\n\n` +
+          `📋 *রোগী ও হাসপাতালের তথ্য:*\n` +
+          `• *রক্তের গ্রুপ:* *${requestData.blood_group}* (${requestData.units || 1} ব্যাগ)\n` +
+          `• *রোগীর নাম:* ${requestData.patient_name}\n` +
+          `• *হাসপাতাল:* ${requestData.hospital_name}, ${requestData.district}\n` +
+          `• *ঠিকানা/ওয়ার্ড:* ${requestData.location}\n` +
+          `• *কখন লাগবে:* *${requestData.needed_by}*\n\n` +
+          `🤝 *যোগাযোগের তথ্য:*\n` +
+          `• *আবেদনকারী:* ${requestData.requester_name || "স্বজন"}\n` +
+          `• *মোবাইল:* *${requestData.contact_phone}*\n` +
+          (requestData.note ? `• *বিশেষ নোট:* ${requestData.note}\n` : "") +
+          `───────────────────────\n` +
+          `🤲 *আপনার একটু সহযোগিতায় বাঁচতে পারে একটি জীবন।*\n` +
+          `আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে মেসেজের উত্তর দিয়ে অথবা নম্বরে কল করে দ্রুত জানান।\n\n` +
+          `🌐 *BRYBDPF মানবিক ব্লাড নেটওয়ার্ক*\n` +
+          `🔗 https://brybdpf.pages.dev`;
         const donorWaUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(promptForDonor)}`;
 
         if (i < 4) {
@@ -610,8 +623,11 @@ async function handleTelegramUpdate(update, env, ctx) {
             donorText += `<b>${i + 1}. ${d.name}</b> (${d.district}, ${d.area})\n` +
               `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার\n\n`;
             
+            const grpWaMsg = `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
+              `জরুরি প্রয়োজনে *${bg}* রক্তের জন্য BRYBDPF থেকে যোগাযোগ করা হচ্ছে। রোগীর জীবন রক্ষায় আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n- BRYBDPF ব্লাড নেটওয়ার্ক`;
+
             inlineKb.push([
-              { text: `💬 ${d.name}-কে WhatsApp মেসেজ`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent("আসসালামু আলাইকুম " + d.name + " ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে।")}` }
+              { text: `💬 ${d.name}-কে WhatsApp মেসেজ`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent(grpWaMsg)}` }
             ]);
           });
         }
@@ -673,15 +689,21 @@ async function handleTelegramUpdate(update, env, ctx) {
             
             text += `<b>${i + 1}. ${d.name}</b> (${d.district}, ${d.area}) - <code>${d.phone}</code>\n`;
 
-            const prefilledText = `আসসালামু আলাইকুম ${d.name} ভাই,\n` +
-              `জরুরি প্রয়োজনে ${req.blood_group} (${req.units || 1} ব্যাগ) রক্তের প্রয়োজন।\n` +
-              `রোগী: ${req.patient_name}\n` +
-              `হাসপাতাল: ${req.hospital_name}, ${req.district}\n` +
-              `ঠিকানা: ${req.location}\n` +
-              `আবেদনকারী: ${req.requester_name || "স্বজন"} (${req.contact_phone})\n` +
-              `প্রয়োজনের সময়: ${req.needed_by}\n\n` +
-              `আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n- BRYBDPF ব্লাড নেটওয়ার্ক`;
-
+            const prefilledText = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
+              `───────────────────────\n` +
+              `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
+              `জরুরি প্রয়োজনে *${req.blood_group}* (${req.units || 1} ব্যাগ) রক্তের প্রয়োজন।\n\n` +
+              `📋 *রোগীর বিবরণ:*\n` +
+              `• *রোগী:* ${req.patient_name}\n` +
+              `• *হাসপাতাল:* ${req.hospital_name}, ${req.district}\n` +
+              `• *ঠিকানা:* ${req.location}\n` +
+              `• *কখন লাগবে:* *${req.needed_by}*\n` +
+              `• *আবেদনকারী:* ${req.requester_name || "স্বজন"} (*${req.contact_phone}*)\n` +
+              (req.note ? `• *নোট:* ${req.note}\n` : "") +
+              `───────────────────────\n` +
+              `🤲 আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n\n` +
+              `🌐 *BRYBDPF ব্লাড নেটওয়ার্ক*\n` +
+              `🔗 https://brybdpf.pages.dev`;
             kb.push([
               { text: `💬 WhatsApp: ${d.name}`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledText)}` }
             ]);
