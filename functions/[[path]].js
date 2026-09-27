@@ -152,101 +152,96 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const reqCleanPhone = (requestData.contact_phone || "").replace(/[^0-9]/g, "");
     const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
 
-    let donorText = "";
-    const inlineButtons = [];
+    const safePatient = escapeHtml(requestData.patient_name);
+    const safeBg = escapeHtml(requestData.blood_group);
+    const safeHosp = escapeHtml(requestData.hospital_name);
+    const safeDist = escapeHtml(requestData.district);
+    const safeThana = escapeHtml(requestData.thana);
+    const safeLoc = escapeHtml(requestData.location);
+    const safeNeed = escapeHtml(requestData.needed_by);
+    const safeReq = escapeHtml(requestData.requester_name || "স্বজন");
+    const safeNote = escapeHtml(requestData.note);
+    const units = requestData.units || 1;
 
-    // 1. WhatsApp message for the REQUESTER (containing list of matched donors)
+    // 1. Text to send to Requester containing list of matched donors
     let shareToRequester = `🩸 *রক্তদাতাদের তালিকা — BRYBDPF* 🩸\n` +
       `───────────────────────\n` +
       `আসসালামু আলাইকুম,\n` +
-      `রোগীর জরুরি প্রয়োজনে *${requestData.blood_group}* গ্রুপের রক্তদাতাদের তালিকা নিচে দেওয়া হলো:\n\n`;
+      `রোগীর জরুরি প্রয়োজনে *${requestData.blood_group}* রক্তদাতাদের তালিকা:\n\n`;
+
+    let donorItems = [];
+
     if (matchedDonors && matchedDonors.length > 0) {
       shareToRequester += matchedDonors.slice(0, 10).map((d, i) => {
-        const tierTag = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [বিভাগীয় জেলা]");
-        const loc = (d.area ? d.area + ', ' : '') + (d.district || 'রংপুর');
+        const tierTag = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
+        const loc = (d.area ? d.area + ", " : "") + (d.district || "রংপুর");
         return `${i + 1}. *${d.name}* (${loc}) ${tierTag}\n   📞 কল করুন: *${d.phone}*`;
       }).join("\n\n");
-      shareToRequester += "\n\n───────────────────────\n" +
-        "💡 *পরামর্শ:* রক্তদাতাদের সাথে দ্রুত সরাসরি ফোনে কথা বলে সময় ও স্থান নিশ্চিত করুন।\n" +
-        "🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।";
-    } else {
-      shareToRequester += "⚠️ এই মুহূর্তে প্রস্তুত কোনো রক্তদাতা পাওয়া যায়নি। আমরা আরও অনুসন্ধানের চেষ্টা করছি।";
-    }
-    shareToRequester += `\n\n🌐 *BRYBDPF মানবিক ব্লাড নেটওয়ার্ক*\n🔗 https://brybdpf.pages.dev`;
-    const waShareUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareToRequester)}`;
 
-    // Top Action Button: Send Donors List to Requester
-    inlineButtons.push([{ text: "⚡ রক্ত গ্রহীতাকে (আবেদনকারী) ডোনার লিস্ট পাঠান", url: waShareUrl }]);
+      shareToRequester += "\n\n───────────────────────\n💡 রক্তদাতাদের সাথে কথা বলে দ্রুত সময় ও স্থান নিশ্চিত করুন।\n🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।\n🌐 BRYBDPF মানবিক ব্লাড নেটওয়ার্ক";
 
-    // 2. WhatsApp messages for EACH DONOR (containing patient & requester details)
-    if (matchedDonors && matchedDonors.length > 0) {
-      donorText = matchedDonors.slice(0, 15).map((d, i) => {
+      donorItems = matchedDonors.slice(0, 12).map((d, i) => {
         const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
         const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-        
+
         const promptForDonor = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
           `───────────────────────\n` +
           `আসসালামু আলাইকুম *${d.name}* ভাই,\n` +
           `এক মুমূর্ষু রোগীর জীবন রক্ষায় আপনার গ্রুপের (*${requestData.blood_group}*) রক্ত জরুরি প্রয়োজন।\n\n` +
           `📋 *রোগী ও হাসপাতালের তথ্য:*\n` +
-          `• *রক্তের গ্রুপ:* *${requestData.blood_group}* (${requestData.units || 1} ব্যাগ)\n` +
+          `• *রক্তের গ্রুপ:* *${requestData.blood_group}* (${units} ব্যাগ)\n` +
           `• *রোগীর নাম:* ${requestData.patient_name}\n` +
           `• *হাসপাতাল:* ${requestData.hospital_name}\n` +
-          `• *স্থান/থানা:* ${requestData.thana ? requestData.thana + ', ' : ''}${requestData.district}\n` +
+          `• *স্থান/থানা:* ${requestData.thana ? requestData.thana + ", " : ""}${requestData.district}\n` +
           `• *ঠিকানা/ওয়ার্ড:* ${requestData.location}\n` +
           `• *কখন লাগবে:* *${requestData.needed_by}*\n\n` +
           `🤝 *যোগাযোগের তথ্য:*\n` +
           `• *আবেদনকারী:* ${requestData.requester_name || "স্বজন"}\n` +
           `• *মোবাইল:* *${requestData.contact_phone}*\n` +
-          (requestData.note ? `• *বিশেষ নোট:* ${requestData.note}\n` : "") +
+          (requestData.note ? `• *নোট:* ${requestData.note}\n` : "") +
           `───────────────────────\n` +
           `🤲 *আপনার একটু সহযোগিতায় বাঁচতে পারে একটি জীবন।*\n` +
-          `আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে মেসেজের উত্তর দিয়ে অথবা নম্বরে কল করে দ্রুত জানান।\n\n` +
-          `🌐 *BRYBDPF মানবিক ব্লাড নেটওয়ার্ক*\n` +
-          `🔗 https://brybdpf.pages.dev`;
+          `আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n` +
+          `🌐 BRYBDPF ব্লাড নেটওয়ার্ক`;
+
         const donorWaUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(promptForDonor)}`;
+        const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী]");
+        const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
 
-        if (i < 4) {
-          inlineButtons.push([{ text: `💬 ${i + 1}. ${d.name} কে রোগীর তথ্য পাঠান`, url: donorWaUrl }]);
-        }
-
-        const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
-        return `${i + 1}. <b>${escapeHtml(d.name)}</b> (${escapeHtml(d.blood_group)}) - ${d.area ? escapeHtml(d.area) + ', ' : ''}${escapeHtml(d.district)} ${tierBadge}\n` +
-          `   📞 <a href="tel:${d.phone}">${d.phone}</a>\n` +
-          `   👉 <a href="${donorWaUrl}">💬 WhatsApp-এ এই ডোনারকে রোগীর তথ্য পাঠান</a>`;
-      }).join("\n\n");
+        return `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
+          `   📞 <code>${d.phone}</code> ➔ <a href="${donorWaUrl}">💬 <b>WhatsApp</b></a>`;
+      });
     } else {
-      donorText = "⚠️ এই গ্রুপের কোনো সক্রিয় ডোনার তাৎক্ষণিকভাবে পাওয়া যায়নি।";
+      shareToRequester += "⚠️ এই মুহূর্তে কোনো প্রস্তুত ডোনার পাওয়া যায়নি।";
     }
 
-    const safePatientName = escapeHtml(requestData.patient_name);
-    const safeHospitalName = escapeHtml(requestData.hospital_name);
-    const safeDistrict = escapeHtml(requestData.district);
-    const safeThana = escapeHtml(requestData.thana);
-    const safeLocation = escapeHtml(requestData.location);
-    const safeNeededBy = escapeHtml(requestData.needed_by);
-    const safeRequesterName = escapeHtml(requestData.requester_name || "স্বজন");
-    const safeNote = escapeHtml(requestData.note);
-    const thanaDisplay = safeThana ? `${safeThana}, ` : "";
+    const waShareUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareToRequester)}`;
 
-    const messageHtml = `🚨 <b>জরুরি রক্তের রিকোয়েস্ট অ্যালার্ট!</b> 🚨\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `🩸 <b>রোগীর প্রয়োজনীয় রক্ত:</b> <code>${escapeHtml(requestData.blood_group)}</code> (${requestData.units || 1} ব্যাগ)\n` +
-      `👤 <b>রোগীর নাম:</b> ${safePatientName}\n` +
-      `🏥 <b>হাসপাতাল:</b> ${safeHospitalName}, ${safeDistrict}\n` +
+    const donorListText = donorItems.length > 0
+      ? donorItems.join("\n\n")
+      : "⚠️ এই মুহূর্তে প্রস্তুত কোনো ডোনার পাওয়া যায়নি।";
+
+    const messageHtml = `🚨 <b>জরুরি রক্তের আবেদন — BRYBDPF</b> 🚨\n` +
+      `────────────────────────────\n` +
+      `🩸 <b>প্রয়োজনীয় রক্ত:</b> <code>${safeBg}</code> (${units} ব্যাগ)\n` +
+      `👤 <b>রোগীর নাম:</b> ${safePatient}\n` +
+      `🏥 <b>হাসপাতাল:</b> ${safeHosp}, ${safeDist}\n` +
       (safeThana ? `📍 <b>থানা/উপজেলা:</b> ${safeThana}\n` : "") +
-      `📍 <b>ঠিকানা/ওয়ার্ড:</b> ${safeLocation}\n` +
-      `⏰ <b>প্রয়োজনের সময়:</b> ${safeNeededBy}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `🤝 <b>আবেদনকারী:</b> ${safeRequesterName}\n` +
-      `📞 <b>যোগাযোগের নম্বর:</b> <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>\n` +
+      `📍 <b>ঠিকানা/ওয়ার্ড:</b> ${safeLoc}\n` +
+      `⏰ <b>প্রয়োজনের সময়:</b> ${safeNeed}\n` +
+      `────────────────────────────\n` +
+      `🤝 <b>আবেদনকারী:</b> ${safeReq} (📞 <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>)\n` +
       (safeNote ? `📝 <b>নোট:</b> ${safeNote}\n` : "") +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📋 <b>রোগীর নিকটবর্তী ডোনারদের তালিকা (${requestData.blood_group}):</b>\n\n` +
-      donorText + `\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚡ <b>এক ক্লিকে আবেদনকারীকে ডোনার লিস্ট পাঠাতে:</b>\n` +
-      `👉 <a href="${waShareUrl}">WhatsApp-এ গ্রহীতাকে ডোনার তালিকা পাঠান</a>`;
+      `────────────────────────────\n` +
+      `📲 <b>রোগীর স্বজনকে সকল ডোনারের তালিকা পাঠান:</b>\n` +
+      `👉 <a href="${waShareUrl}"><b>WhatsApp-এ রোগীর স্বজনকে পাঠান</b></a>\n` +
+      `────────────────────────────\n` +
+      `📋 <b>উপযুক্ত প্রস্তুত ডোনারগণ (${safeBg}):</b>\n\n` +
+      donorListText;
+
+    const inlineButtons = [
+      [{ text: "📲 রোগীর স্বজনকে ডোনার লিস্ট পাঠান (WhatsApp)", url: waShareUrl }]
+    ];
 
     for (const uid of uids) {
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -654,19 +649,18 @@ async function handleTelegramUpdate(update, env, ctx) {
         const inlineKb = [];
 
         if (!results || results.length === 0) {
-          donorText = `⚠️ <b>${bg}</b> গ্রুপের এই মুহূর্তে কোনো সক্রিয় ও প্রস্তুত ডোনার ডাটাবেজে পাওয়া যায়নি।`;
+          donorText = `⚠️ <b>${escapeHtml(bg)}</b> গ্রুপের এই মুহূর্তে কোনো সক্রিয় ও প্রস্তুত ডোনার ডাটাবেজে পাওয়া যায়নি।`;
         } else {
-          donorText = `🩸 <b>${bg} গ্রুপের প্রস্তুত ডোনার তালিকা (শীর্ষ ${results.length} জন):</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
-          results.forEach((d, i) => {
+          donorText = `🩸 <b>${escapeHtml(bg)} গ্রুপের প্রস্তুত ডোনার তালিকা (${results.length} জন):</b>\n────────────────────────────\n\n`;
+          donorText += results.map((d, i) => {
             const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
             const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-            donorText += `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${escapeHtml(d.district)}, ${escapeHtml(d.area)})\n` +
-              `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার\n\n`;
-            
-            inlineKb.push([
-              { text: `💬 ${d.name}-কে WhatsApp মেসেজ`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent("আসসালামু আলাইকুম " + d.name + " ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে।")}` }
-            ]);
-          });
+            const waMsg = `আসসালামু আলাইকুম ${d.name} ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে।`;
+            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`;
+            const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
+            return `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${loc})\n` +
+              `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
+          }).join("\n\n");
         }
 
         inlineKb.push([
@@ -720,24 +714,33 @@ async function handleTelegramUpdate(update, env, ctx) {
             END) as proximity_tier
           FROM donors 
           WHERE blood_group = ? AND is_available = 1
-          ORDER BY proximity_tier ASC, id DESC LIMIT 8
+          ORDER BY proximity_tier ASC, id DESC LIMIT 10
         `).bind(reqDist, `%${reqThana}%`, reqThana, reqDist, req.blood_group).all();
 
-        let text = `📋 <b>রিকোয়েস্ট #${req.id} এর জন্য প্রস্তুত ডোনার তালিকা:</b>\n` +
-          `রোগী: ${escapeHtml(req.patient_name)} (${escapeHtml(req.blood_group)}) - ${escapeHtml(req.hospital_name)}\n` +
-          `স্থান: ${req.thana ? escapeHtml(req.thana) + ', ' : ''}${escapeHtml(req.district)}\n━━━━━━━━━━━━━━━━━━━━\n`;
+        const reqCleanPhone = (req.contact_phone || "").replace(/[^0-9]/g, "");
+        const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
 
-        const kb = [];
+        let shareToRequester = `🩸 *রক্তদাতাদের তালিকা — BRYBDPF* 🩸\n` +
+          `───────────────────────\n` +
+          `আসসালামু আলাইকুম,\n` +
+          `রোগীর জরুরি প্রয়োজনে *${req.blood_group}* রক্তদাতাদের তালিকা:\n\n`;
 
-        if (!donors || donors.length === 0) {
-          text += `⚠️ এই মুহূর্তে কোনো প্রস্তুত ডোনার পাওয়া যায়নি।`;
-        } else {
-          donors.forEach((d, i) => {
+        let donorItems = [];
+
+        if (donors && donors.length > 0) {
+          shareToRequester += donors.map((d, i) => {
+            const tierTag = d.proximity_tier === 1 ? "🎯 [একই থানা]" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
+            const loc = (d.area ? d.area + ", " : "") + (d.district || "রংপুর");
+            return `${i + 1}. *${d.name}* (${loc}) ${tierTag}\n   📞 কল করুন: *${d.phone}*`;
+          }).join("\n\n");
+
+          shareToRequester += "\n\n───────────────────────\n💡 রক্তদাতাদের সাথে কথা বলে দ্রুত সময় নিশ্চিত করুন।\n🤲 রোগীর দ্রুত সুস্থতা কামনা করছি।\n🌐 BRYBDPF ব্লাড নেটওয়ার্ক";
+
+          donorItems = donors.map((d, i) => {
             const cleanPhone = d.phone.replace(/[^0-9]/g, "");
             const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-            const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী জেলা]");
-            
-            text += `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${d.area ? escapeHtml(d.area) + ', ' : ''}${escapeHtml(d.district)}) ${tierBadge}\n   📞 <code>${d.phone}</code>\n`;
+            const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী]");
+            const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
 
             const prefilledText = `🚨 *জরুরি রক্তের আবেদন — BRYBDPF* 🚨\n` +
               `───────────────────────\n` +
@@ -746,28 +749,51 @@ async function handleTelegramUpdate(update, env, ctx) {
               `📋 *রোগীর বিবরণ:*\n` +
               `• *রোগী:* ${req.patient_name}\n` +
               `• *হাসপাতাল:* ${req.hospital_name}\n` +
-              `• *স্থান/থানা:* ${req.thana ? req.thana + ', ' : ''}${req.district}\n` +
+              `• *স্থান/থানা:* ${req.thana ? req.thana + ", " : ""}${req.district}\n` +
               `• *ঠিকানা/ওয়ার্ড:* ${req.location}\n` +
               `• *কখন লাগবে:* *${req.needed_by}*\n` +
               `• *আবেদনকারী:* ${req.requester_name || "স্বজন"} (*${req.contact_phone}*)\n` +
               (req.note ? `• *নোট:* ${req.note}\n` : "") +
               `───────────────────────\n` +
-              `🤲 আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n\n` +
-              `🌐 *BRYBDPF রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক*\n` +
-              `🔗 https://brybdpf.pages.dev`;
-            kb.push([
-              { text: `💬 WhatsApp: ${d.name}`, url: `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledText)}` }
-            ]);
+              `🤲 আপনি কি রক্তদান করতে প্রস্তুত আছেন? দয়া করে দ্রুত জানান।\n` +
+              `🌐 BRYBDPF মানবিক নেটওয়ার্ক`;
+
+            const donorWaUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(prefilledText)}`;
+
+            return `${i + 1}. <b>${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
+              `   📞 <code>${d.phone}</code> ➔ <a href="${donorWaUrl}">💬 <b>WhatsApp</b></a>`;
           });
+        } else {
+          shareToRequester += "⚠️ কোনো সক্রিয় ডোনার পাওয়া যায়নি।";
         }
 
-        kb.push([
-          { text: "🤝 Matched মার্ক করুন", callback_data: `cb:req_status:${req.id}:Matched` },
-          { text: "✅ Fulfilled মার্ক করুন", callback_data: `cb:req_status:${req.id}:Fulfilled` }
-        ]);
-        kb.push([
-          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
-        ]);
+        const waShareUrl = `https://wa.me/${reqWaNumber}?text=${encodeURIComponent(shareToRequester)}`;
+
+        const donorListText = donorItems.length > 0 
+          ? donorItems.join("\n\n") 
+          : "⚠️ এই মুহূর্তে কোনো প্রস্তুত ডোনার পাওয়া যায়নি।";
+
+        let text = `📋 <b>রিকোয়েস্ট #${req.id} — প্রস্তুত ডোনার তালিকা</b>\n` +
+          `────────────────────────────\n` +
+          `🩸 <b>রোগী:</b> ${escapeHtml(req.patient_name)} (<code>${escapeHtml(req.blood_group)}</code>)\n` +
+          `🏥 <b>হাসপাতাল:</b> ${escapeHtml(req.hospital_name)}, ${escapeHtml(req.district)}\n` +
+          (req.thana ? `📍 <b>থানা/উপজেলা:</b> ${escapeHtml(req.thana)}\n` : "") +
+          `📞 <b>আবেদনকারী:</b> ${escapeHtml(req.requester_name || "স্বজন")} (<code>${req.contact_phone}</code>)\n` +
+          `────────────────────────────\n` +
+          `📲 <b>রোগীর স্বজনকে ডোনারদের তালিকা পাঠান:</b>\n` +
+          `👉 <a href="${waShareUrl}"><b>WhatsApp-এ রোগীর স্বজনকে পাঠান</b></a>\n` +
+          `────────────────────────────\n` +
+          `📋 <b>উপযুক্ত ডোনারগণ (${escapeHtml(req.blood_group)}):</b>\n\n` +
+          donorListText;
+
+        const kb = [
+          [{ text: "📲 রোগীর স্বজনকে ডোনার লিস্ট পাঠান (WhatsApp)", url: waShareUrl }],
+          [
+            { text: "🤝 Matched", callback_data: `cb:req_status:${req.id}:Matched` },
+            { text: "✅ Fulfilled", callback_data: `cb:req_status:${req.id}:Fulfilled` }
+          ],
+          [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]
+        ];
 
         await tgSendOrEdit(token, chatId, messageId, text, kb, true);
         return;
