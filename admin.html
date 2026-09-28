@@ -228,7 +228,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <input type="text" id="donorSearchInput" onkeyup="handleDonorSearch(event)" placeholder="নাম, ফোন বা এলাকা দিয়ে খুঁজুন..." class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-500 w-48 sm:w-64">
-              <select id="donorGroupFilter" onchange="loadDonors()" class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-gray-50 font-semibold focus:outline-none focus:ring-2 focus:ring-red-500">
+              <select id="donorGroupFilter" onchange="loadDonors(1)" class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-gray-50 font-semibold focus:outline-none focus:ring-2 focus:ring-red-500">
                 <option value="ALL">সকল গ্রুপ</option>
                 <option value="A+">A+</option>
                 <option value="A-">A-</option>
@@ -239,7 +239,7 @@
                 <option value="O+">O+</option>
                 <option value="O-">O-</option>
               </select>
-              <button onclick="loadDonors()" class="p-2 border border-gray-200 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-600 transition" title="রিফ্রেশ">
+              <button onclick="loadDonors(currentDonorPage)" class="p-2 border border-gray-200 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-600 transition" title="রিফ্রেশ">
                 <i class="fa-solid fa-rotate-right"></i>
               </button>
             </div>
@@ -262,6 +262,13 @@
                 <tr><td colspan="7" class="text-center py-8 text-gray-400">ডোনার লোড হচ্ছে...</td></tr>
               </tbody>
             </table>
+          </div>
+          <div id="donorsPagination" class="p-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-600 bg-gray-50/50">
+            <span id="donorPaginationInfo">পৃষ্ঠা ১ এর ১ (মোট ০ জন)</span>
+            <div class="flex gap-2">
+              <button id="donorPrevBtn" onclick="changeDonorPage(-1)" disabled class="px-3 py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold disabled:opacity-40">পূর্ববর্তী</button>
+              <button id="donorNextBtn" onclick="changeDonorPage(1)" disabled class="px-3 py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold disabled:opacity-40">পরবর্তী</button>
+            </div>
           </div>
         </div>
       </div>
@@ -376,6 +383,13 @@
       <div class="p-5 overflow-y-auto flex-1 space-y-3" id="matchResultsContainer">
         <!-- Matched donor items injected here -->
       </div>
+      <div id="matchPagination" class="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600 bg-gray-50/60">
+        <span id="matchPaginationInfo">পৃষ্ঠা ১ এর ১</span>
+        <div class="flex gap-2">
+          <button id="matchPrevBtn" onclick="changeMatchPage(-1)" disabled class="px-3 py-1 bg-white border border-gray-200 rounded-lg font-bold disabled:opacity-40">পূর্ববর্তী</button>
+          <button id="matchNextBtn" onclick="changeMatchPage(1)" disabled class="px-3 py-1 bg-white border border-gray-200 rounded-lg font-bold disabled:opacity-40">পরবর্তী</button>
+        </div>
+      </div>
 
       <div class="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
         <button onclick="closeMatchModal()" class="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-bold text-sm">
@@ -406,6 +420,9 @@
   <script>
     let currentAdmin = null;
     let currentReqPage = 1;
+    let currentDonorPage = 1;
+    let currentMatchRequestId = null;
+    let currentMatchPage = 1;
     let currentShareText = '';
 
     function escapeHtml(str) {
@@ -701,9 +718,9 @@
           `;
         }).join('');
 
-        document.getElementById('reqPaginationInfo').textContent = `পৃষ্ঠা ${data.page} এর ${data.total_pages} (মোট ${data.total} টি)`;
+        document.getElementById('reqPaginationInfo').textContent = `পৃষ্ঠা ${data.page} এর ${data.totalPages} (মোট ${data.total} টি)`;
         document.getElementById('reqPrevBtn').disabled = data.page <= 1;
-        document.getElementById('reqNextBtn').disabled = data.page >= data.total_pages;
+        document.getElementById('reqNextBtn').disabled = data.page >= data.totalPages;
 
       } catch (err) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">ডাটা লোড করতে সমস্যা হয়েছে।</td></tr>';
@@ -738,23 +755,27 @@
     function handleDonorSearch(e) {
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
-        loadDonors();
+        loadDonors(1);
       }, 300);
     }
 
-    async function loadDonors() {
+    async function loadDonors(page = 1) {
+      currentDonorPage = Math.max(1, page);
       const bg = document.getElementById('donorGroupFilter').value;
       const search = document.getElementById('donorSearchInput').value;
       const tbody = document.getElementById('donorsTableBody');
       tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-xl text-red-500"></i></td></tr>';
 
       try {
-        const params = new URLSearchParams({ blood_group: bg || 'ALL', search });
+        const params = new URLSearchParams({ blood_group: bg || 'ALL', search, page: String(currentDonorPage), limit: '20' });
         const donorsUrl = '/api/admin/donors?' + params.toString();
         const data = await fetchAdminJson(donorsUrl, `donors:${params.toString()}`);
 
         if (!data.donors || data.donors.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">কোনো ডোনার পাওয়া যায়নি।</td></tr>';
+          document.getElementById('donorPaginationInfo').textContent = 'পৃষ্ঠা ০ এর ০ (মোট ০ জন)';
+          document.getElementById('donorPrevBtn').disabled = true;
+          document.getElementById('donorNextBtn').disabled = true;
           return;
         }
 
@@ -799,10 +820,17 @@
             </tr>
           `;
         }).join('');
+        document.getElementById('donorPaginationInfo').textContent = `পৃষ্ঠা ${data.page} এর ${data.totalPages} (মোট ${data.total} জন)`;
+        document.getElementById('donorPrevBtn').disabled = data.page <= 1;
+        document.getElementById('donorNextBtn').disabled = data.page >= data.totalPages;
 
       } catch (err) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-500">ডাটা লোড করতে সমস্যা হয়েছে।</td></tr>';
       }
+    }
+
+    function changeDonorPage(delta) {
+      loadDonors(currentDonorPage + delta);
     }
 
     async function toggleDonorStatus(id) {
@@ -811,7 +839,7 @@
         if (res.ok) {
           showToast('ডোনার স্ট্যাটাস পরিবর্তিত হয়েছে', 'success');
           clearAdminDataCache();
-          loadDonors();
+          loadDonors(currentDonorPage);
         }
       } catch (e) {
         showToast('ব্যর্থ হয়েছে!', 'error');
@@ -825,7 +853,7 @@
           if (res.ok) {
             showToast('ডোনার মুছে ফেলা হয়েছে', 'success');
             clearAdminDataCache();
-            loadDonors();
+            loadDonors(currentDonorPage);
           }
         } catch (e) {
           showToast('মুছতে ব্যর্থ হয়েছে!', 'error');
@@ -834,7 +862,9 @@
     }
 
     // Match Donors Modal
-    async function matchDonors(requestId) {
+    async function matchDonors(requestId, page = 1) {
+      currentMatchRequestId = requestId;
+      currentMatchPage = Math.max(1, page);
       const modal = document.getElementById('matchModal');
       const container = document.getElementById('matchResultsContainer');
       const info = document.getElementById('modalPatientInfo');
@@ -842,15 +872,15 @@
       modal.classList.remove('hidden');
 
       try {
-        const res = await fetch(`/api/admin/requests/${requestId}/match-donors`);
+        const res = await fetch(`/api/admin/requests/${requestId}/match-donors?page=${currentMatchPage}&limit=15`);
         const data = await res.json();
 
-        info.innerHTML = `রোগী: <b>${escapeHtml(data.patient_name)}</b> | রক্তের গ্রুপ: <span class="bg-white/20 px-2 py-0.5 rounded font-black">${escapeHtml(data.blood_group)}</span> | স্থান: <b>${escapeHtml(data.hospital_name)}, ${escapeHtml(data.district)}</b>`;
+        info.innerHTML = `রোগী: <b>${escapeHtml(req.patient_name)}</b> | রক্তের গ্রুপ: <span class="bg-white/20 px-2 py-0.5 rounded font-black">${escapeHtml(req.blood_group)}</span> | স্থান: <b>${escapeHtml(req.hospital_name)}, ${escapeHtml(req.district)}</b>`;
 
-        const reqCleanPhone = (data.contact_phone || '').replace(/[^0-9]/g, '');
+        const reqCleanPhone = (req.contact_phone || '').replace(/[^0-9]/g, '');
         const reqWaNumber = reqCleanPhone.startsWith('88') ? reqCleanPhone : (reqCleanPhone.startsWith('0') ? '88' + reqCleanPhone : reqCleanPhone);
 
-        let shareText = `আসসালামু আলাইকুম, BRYBDPF থেকে আপনার কাঙ্ক্ষিত ${data.blood_group} রক্তের ডোনারদের তালিকা:\n\n`;
+        let shareText = `আসসালামু আলাইকুম, BRYBDPF থেকে আপনার কাঙ্ক্ষিত ${req.blood_group} রক্তের ডোনারদের তালিকা:\n\n`;
         const donors = data.donors || [];
 
         if (donors.length === 0) {
@@ -859,7 +889,7 @@
               <div class="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-2 text-xl">
                 <i class="fa-solid fa-triangle-exclamation"></i>
               </div>
-              <p class="text-sm font-bold text-gray-700">এই মুহূর্তে ${data.blood_group} গ্রুপের কোনো সক্রিয় ডোনার পাওয়া যায়নি।</p>
+              <p class="text-sm font-bold text-gray-700">এই মুহূর্তে ${req.blood_group} গ্রুপের কোনো সক্রিয় ডোনার পাওয়া যায়নি।</p>
               <p class="text-xs text-gray-400 mt-1">নিকটবর্তী এলাকার অন্যান্য ডোনারদের সাথে যোগাযোগ করতে পারেন।</p>
             </div>
           `;
@@ -869,7 +899,7 @@
             const cleanPhone = (d.phone || '').replace(/[^0-9]/g, '');
             const waNumber = cleanPhone.startsWith('88') ? cleanPhone : (cleanPhone.startsWith('0') ? '88' + cleanPhone : cleanPhone);
             const callUrl = `tel:${d.phone}`;
-            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(`আসসালামু আলাইকুম ${d.name} ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে। রোগী: ${data.patient_name} (${data.blood_group}), হাসপাতাল: ${data.hospital_name}। আপনি কি রক্তদান করতে প্রস্তুত আছেন?`)}`;
+            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(`আসসালামু আলাইকুম ${d.name} ভাই, BRYBDPF থেকে রক্তের জরুরি প্রয়োজনে যোগাযোগ করা হচ্ছে। রোগী: ${req.patient_name} (${req.blood_group}), হাসপাতাল: ${req.hospital_name}। আপনি কি রক্তদান করতে প্রস্তুত আছেন?`)}`;
 
             const safeDName = escapeHtml(d.name);
             const safeDBG = escapeHtml(d.blood_group);
@@ -906,10 +936,17 @@
         }
 
         currentShareText = shareText;
+        document.getElementById('matchPaginationInfo').textContent = `পৃষ্ঠা ${data.page} এর ${data.totalPages} (মোট ${data.total} জন)`;
+        document.getElementById('matchPrevBtn').disabled = data.page <= 1;
+        document.getElementById('matchNextBtn').disabled = data.page >= data.totalPages;
 
       } catch (err) {
         container.innerHTML = '<div class="text-center py-8 text-red-500">ম্যাচিং ডেটা লোড করতে সমস্যা হয়েছে।</div>';
       }
+    }
+
+    function changeMatchPage(delta) {
+      if (currentMatchRequestId) matchDonors(currentMatchRequestId, currentMatchPage + delta);
     }
 
     function closeMatchModal() {

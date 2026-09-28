@@ -555,13 +555,28 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
-    const renderMatches = async (targetChatId, targetMsgId, requestId, isCb) => {
+    const renderMatches = async (targetChatId, targetMsgId, requestId, isCb, page = 1) => {
       const req = await env.DB.prepare("SELECT patient_name, blood_group, district FROM blood_requests WHERE id = ?").bind(requestId).first();
       if (!req) return tgSendOrEdit(token, targetChatId, targetMsgId, "❌ রিকোয়েস্টটি পাওয়া যায়নি।", [[{ text: "🔙 Pending তালিকা", callback_data: "cb:pending" }]], isCb);
-      const { results } = await env.DB.prepare("SELECT name, blood_group, phone, area, district, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1) ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT 8").bind(req.blood_group, req.district).all();
-      const donors = results || [];
-      const text = `🩸 <b>#${requestId} — ${escapeHtml(req.patient_name)}</b>\nপ্রয়োজন: <code>${escapeHtml(req.blood_group)}</code> | ${escapeHtml(req.district)}\n────────────────────\n` + (donors.length ? donors.map((d, i) => `${i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.phone)}\n   ${escapeHtml(d.area || '')}, ${escapeHtml(d.district || '')} | দান ${d.total_donations || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো প্রস্তুত ডোনার নেই।");
-      return tgSendOrEdit(token, targetChatId, targetMsgId, text, [[{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], isCb);
+      const safePage = Math.max(1, Number(page) || 1);
+      const limit = 8;
+      const offset = (safePage - 1) * limit;
+      const where = "REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)";
+      const [countRow, donorRows] = await Promise.all([
+        env.DB.prepare(`SELECT COUNT(*) AS c FROM donors WHERE ${where}`).bind(req.blood_group).first(),
+        env.DB.prepare(`SELECT name, blood_group, phone, area, district, total_donations FROM donors WHERE ${where} ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT ? OFFSET ?`).bind(req.blood_group, req.district, limit, offset).all()
+      ]);
+      const total = countRow?.c || 0;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const donors = donorRows.results || [];
+      const text = `🩸 <b>#${requestId} — ${escapeHtml(req.patient_name)}</b>\nপ্রয়োজন: <code>${escapeHtml(req.blood_group)}</code> | ${escapeHtml(req.district)}\nপৃষ্ঠা ${safePage}/${totalPages} • মোট ${total} জন\n────────────────────\n` + (donors.length ? donors.map((d, i) => `${offset + i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.phone)}\n   ${escapeHtml(d.area || '')}, ${escapeHtml(d.district || '')} | দান ${d.total_donations || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো প্রস্তুত ডোনার নেই।");
+      const nav = [];
+      if (safePage > 1) nav.push({ text: "⬅️ আগের", callback_data: `cb:req:${requestId}:view:${safePage - 1}` });
+      if (safePage < totalPages) nav.push({ text: "পরের ➡️", callback_data: `cb:req:${requestId}:view:${safePage + 1}` });
+      const kb = [];
+      if (nav.length) kb.push(nav);
+      kb.push([{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]);
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
     if (update.callback_query) {
@@ -594,9 +609,12 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       }
 
       if (data.startsWith("cb:req:")) {
-        const [, , requestId, action] = data.split(":");
+        const parts = data.split(":");
+        const requestId = parts[2];
+        const action = parts[3];
+        const matchPage = parts[4] === undefined ? 1 : Math.max(1, Number(parts[4]) || 1);
         if (action === "view") {
-          await renderMatches(chatId, messageId, requestId, true);
+          await renderMatches(chatId, messageId, requestId, true, matchPage);
           return;
         }
         const allowed = new Set(["Matched", "Fulfilled", "Closed"]);
@@ -655,33 +673,34 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       }
 
       if (data.startsWith("cb:grp:")) {
-        const bg = data.replace("cb:grp:", "").trim();
-        const { results } = await env.DB.prepare(
-          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1) ORDER BY id DESC LIMIT 10"
-        ).bind(bg).all();
-
-        let donorText = "";
-        const inlineKb = [];
-
-        if (!results || results.length === 0) {
-          donorText = `⚠️ <b>${escapeHtml(bg)}</b> গ্রুপের এই মুহূর্তে কোনো সক্রিয় ও প্রস্তুত ডোনার ডাটাবেজে পাওয়া যায়নি।`;
-        } else {
-          donorText = `🩸 <b>${escapeHtml(bg)} গ্রুপের প্রস্তুত ডোনার তালিকা (${results.length} জন):</b>\n────────────────────────────\n\n`;
-          donorText += results.map((d, i) => {
-            const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
-            const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-            const waUrl = `https://wa.me/${waNumber}`;
-            const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
-            return `<b>${i + 1}. ${escapeHtml(d.name)}</b> (${loc})\n` +
-              `   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
-          }).join("\n\n");
-        }
-
-        inlineKb.push([
-          { text: "🩸 অন্য গ্রুপ দেখুন", callback_data: "cb:groups" },
-          { text: "🔙 মূল মেনু", callback_data: "cb:menu" }
+        const groupData = data.replace("cb:grp:", "").trim();
+        const marker = groupData.lastIndexOf(":p:");
+        const bg = marker >= 0 ? groupData.slice(0, marker) : groupData;
+        const page = marker >= 0 ? Math.max(1, Number(groupData.slice(marker + 3)) || 1) : 1;
+        const limit = 10;
+        const offset = (page - 1) * limit;
+        const where = "REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)";
+        const [countRow, donorRows] = await Promise.all([
+          env.DB.prepare(`SELECT COUNT(*) AS c FROM donors WHERE ${where}`).bind(bg).first(),
+          env.DB.prepare(`SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).bind(bg, limit, offset).all()
         ]);
-
+        const total = countRow?.c || 0;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        const results = donorRows.results || [];
+        let donorText = `🩸 <b>${escapeHtml(bg)} গ্রুপের প্রস্তুত ডোনার তালিকা</b>\nপৃষ্ঠা ${page}/${totalPages} • মোট ${total} জন\n────────────────────────────\n\n`;
+        donorText += results.length ? results.map((d, i) => {
+          const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
+          const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
+          const waUrl = `https://wa.me/${waNumber}`;
+          const loc = (d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর");
+          return `<b>${offset + i + 1}. ${escapeHtml(d.name)}</b> (${loc})\n   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
+        }).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো সক্রিয় ও প্রস্তুত ডোনার নেই।";
+        const nav = [];
+        if (page > 1) nav.push({ text: "⬅️ আগের", callback_data: `cb:grp:${bg}:p:${page - 1}` });
+        if (page < totalPages) nav.push({ text: "পরের ➡️", callback_data: `cb:grp:${bg}:p:${page + 1}` });
+        const inlineKb = [];
+        if (nav.length) inlineKb.push(nav);
+        inlineKb.push([{ text: "🩸 অন্য গ্রুপ দেখুন", callback_data: "cb:groups" }, { text: "🔙 মূল মেনু", callback_data: "cb:menu" }]);
         await tgSendOrEdit(token, chatId, messageId, donorText, inlineKb, true);
         return;
       }
@@ -1313,19 +1332,19 @@ export async function onRequest(context) {
           const reqThana = reqItem.thana || "";
           const reqDist = (reqItem.district || "রংপুর").trim();
 
+          const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
+          const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") || "15", 10) || 15));
+          const offset = (page - 1) * limit;
+          const where = "REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)";
+          const count = (await env.DB.prepare(`SELECT COUNT(*) AS c FROM donors WHERE ${where}`).bind(reqItem.blood_group.trim().toUpperCase()).first())?.c || 0;
           const { results: donors } = await env.DB.prepare(`
-            SELECT id, name, blood_group, district, thana, area, phone, last_donation_date, total_donations,
-              (CASE 
-                WHEN district = ? AND thana = ? AND ? != '' THEN 1
-                WHEN district = ? THEN 2
-                ELSE 3
-              END) as proximity_tier
-            FROM donors 
-            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)
-            ORDER BY proximity_tier ASC, id DESC LIMIT 15
-          `).bind(reqDist, reqThana, reqThana, reqDist, reqItem.blood_group.trim().toUpperCase()).all();
+            SELECT id, name, blood_group, district, thana, area, phone, age, last_donation_date, total_donations,
+              (CASE WHEN district = ? AND thana = ? AND ? != '' THEN 1 WHEN district = ? THEN 2 ELSE 3 END) as proximity_tier
+            FROM donors WHERE ${where}
+            ORDER BY proximity_tier ASC, id DESC LIMIT ? OFFSET ?
+          `).bind(reqDist, reqThana, reqThana, reqDist, reqItem.blood_group.trim().toUpperCase(), limit, offset).all();
 
-          return json({ request: reqItem, donors: donors || [] });
+          return json({ request: reqItem, donors: donors || [], total: count, page, totalPages: Math.max(1, Math.ceil(count / limit)) });
         }
 
         if (path.startsWith("/api/admin/requests/") && path.endsWith("/status") && method === "POST") {
