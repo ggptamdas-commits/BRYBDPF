@@ -537,7 +537,12 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
     };
 
     const renderDonationPrompt = async (targetChatId, targetMsgId, isCb, stateKey = targetChatId) => {
-      await env.DB.prepare("INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, data, updated_at) VALUES (?, 'donation_phone', '', datetime('now'))").bind(String(stateKey)).run();
+      try {
+        await env.DB.prepare("INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, data, updated_at) VALUES (?, 'donation_phone', '', datetime('now'))").bind(String(stateKey)).run();
+      } catch (stateError) {
+        console.error("Telegram donation state error:", stateError);
+        return tgSendOrEdit(token, targetChatId, targetMsgId, "⚠️ সাময়িক ডাটাবেজ সমস্যা হয়েছে। অনুগ্রহ করে আবার বাটনটি চাপুন।", [[{ text: "🔄 আবার চেষ্টা", callback_data: "cb:mark_donation" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], isCb);
+      }
       const text = "💉 <b>রক্তদান সম্পন্ন মার্ক করুন</b>\nডোনারের নিবন্ধিত ১১ ডিজিটের ফোন নম্বর পাঠান।\n\nফোন পাওয়ার পর আমি ডোনারের নাম ও লিঙ্গ দেখিয়ে আপনার কাছে নিশ্চিতকরণ চাইব।";
       const kb = [[{ text: "❌ বাতিল", callback_data: "cb:don_cancel" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
@@ -578,7 +583,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         return;
       }
 
-      if (data === "cb:mark_donation") {
+      if (data === "cb:mark_donation" || data === "mark_donation" || data === "donation_done") {
         await renderDonationPrompt(chatId, messageId, true, fromId);
         return;
       }
@@ -693,8 +698,8 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         return;
       }
 
-      const stateRow = await env.DB.prepare("SELECT state, data FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).first();
-      if (stateRow?.state === 'donation_phone' && text && !text.startsWith('/')) {
+      const stateRow = await env.DB.prepare("SELECT state, data FROM bot_admin_states WHERE admin_uid = ? AND updated_at > datetime('now', '-30 minutes')").bind(String(fromId)).first();
+      if (['donation_phone', 'waiting_for_donation_phone', 'waiting_for_phone'].includes(stateRow?.state) && text && !text.startsWith('/') && !text.includes('রক্তদান') && !text.includes('ডোনেশন') && !text.includes('মেনু') && !text.includes('রিফ্রেশ')) {
         const cleanPhone = normalizePhone(text);
         if (!isValidPhone(cleanPhone)) {
           await tgSendMessage(token, chatId, "⚠️ সঠিক ১১ ডিজিটের ফোন নম্বর দিন। যেমন: <code>017XXXXXXXX</code>", [[{ text: "❌ বাতিল", callback_data: "cb:don_cancel" }]]);
@@ -722,6 +727,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       }
 
       if (text === "/start" || text === "/menu" || text.includes("মেনু") || text.includes("রিফ্রেশ")) {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
         const welcomeText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল প্যানেল</b> 🩸\nস্বাগতম! নিচের বাটনগুলো চেপে সহজেই রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:`;
         await tgSendMessage(token, chatId, welcomeText, getMainAdminKeyboard());
         return;
@@ -737,8 +743,8 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         return;
       }
 
-      if (text.includes("ডোনেশন")) {
-        await renderDonationPrompt(chatId, null, false);
+      if (text.includes("ডোনেশন") || text.includes("রক্তদান")) {
+        await renderDonationPrompt(chatId, null, false, fromId);
         return;
       }
 
