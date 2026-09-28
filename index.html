@@ -523,11 +523,69 @@
     </div>
   </div>
 
+  <!-- Reusable custom notification dialog -->
+  <div id="custom-dialog" class="hidden fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="custom-dialog-title">
+    <div class="w-full max-w-sm rounded-3xl bg-white shadow-2xl border border-white/70 overflow-hidden text-center">
+      <div id="custom-dialog-icon" class="mx-auto mt-7 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"></div>
+      <div class="px-6 pt-4 pb-6">
+        <h3 id="custom-dialog-title" class="text-xl font-bold text-slate-900"></h3>
+        <p id="custom-dialog-message" class="mt-2 text-sm leading-7 text-slate-600 whitespace-pre-line"></p>
+        <button type="button" onclick="closeCustomDialog()" class="mt-6 w-full h-11 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white font-bold transition">ঠিক আছে</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Hidden Canvas for crisp high-res card image rendering -->
   <canvas id="donor-card-canvas" width="900" height="520" class="hidden"></canvas>
 
   <script>
     const RANGPUR_DIVISION_DATA = {"রংপুর": ["কোতোয়ালি", "তাজহাট", "মাহিগঞ্জ", "হারাগাছ", "পরশুরাম", "হাজিরহাট", "রংপুর সদর", "বদরগঞ্জ", "গংগাচড়া", "কাউনিয়া", "মিঠাপুকুর", "পীরগাছা", "পীরগঞ্জ", "তারাগঞ্জ"], "নীলফামারী": ["নীলফামারী সদর", "সৈয়দপুর", "জলঢাকা", "কিশোরগঞ্জ", "ডোমার", "ডিমলা"], "দিনাজপুর": ["দিনাজপুর সদর", "কোতোয়ালি", "বিরল", "বিরামপুর", "বীরগঞ্জ", "বোচাগঞ্জ", "চিরিরবন্দর", "ফুলবাড়ী", "ঘোড়াঘাট", "হাকিমপুর (হিলি)", "কাহারোল", "খানসামা", "নবাবগঞ্জ", "পার্বতীপুর"], "কুড়িগ্রাম": ["কুড়িগ্রাম সদর", "নাগেশ্বরী", "ভূরুঙ্গামারী", "ফুলবাড়ী", "রাজারহাট", "উলিপুর", "চিলমারী", "রৌমারী", "চর রাজীবপুর", "কচাকাটা"], "লালমনিরহাট": ["লালমনিরহাট সদর", "পাটগ্রাম", "হাতীবান্ধা", "কালীগঞ্জ", "আদিতমারী"], "গাইবান্ধা": ["গাইবান্ধা সদর", "গোবিন্দগঞ্জ", "সুন্দরগঞ্জ", "সাদুল্লাপুর", "সাঘাটা", "পলাশবাড়ী", "ফুলছড়ি"], "ঠাকুরগাঁও": ["ঠাকুরগাঁও সদর", "পীরগঞ্জ", "রাণীশংকৈল", "বালিয়াডাঙ্গী", "হরিপুর", "রুহিয়া"], "পঞ্চগড়": ["পঞ্চগড় সদর", "দেবীগঞ্জ", "বোদা", "তেঁতুলিয়া", "আটোয়ারী"]};
+
+
+    function showCustomDialog(type, title, message) {
+      const dialog = document.getElementById('custom-dialog');
+      const icon = document.getElementById('custom-dialog-icon');
+      const palette = {
+        success: ['✅', 'bg-emerald-50 text-emerald-600'],
+        error: ['⚠️', 'bg-rose-50 text-rose-600'],
+        warning: ['⏳', 'bg-amber-50 text-amber-600'],
+        info: ['ℹ️', 'bg-blue-50 text-blue-600']
+      };
+      const [symbol, classes] = palette[type] || palette.error;
+      icon.textContent = symbol;
+      icon.className = 'mx-auto mt-7 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl ' + classes;
+      document.getElementById('custom-dialog-title').textContent = title;
+      document.getElementById('custom-dialog-message').textContent = message;
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+    }
+
+    function closeCustomDialog() {
+      const dialog = document.getElementById('custom-dialog');
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+    }
+
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('invalid', event => {
+        event.preventDefault();
+        const dialog = document.getElementById('custom-dialog');
+        if (!dialog.classList.contains('flex')) {
+          showCustomDialog('warning', 'তথ্য অসম্পূর্ণ', 'লাল চিহ্নিত বা প্রয়োজনীয় সব ঘর সঠিকভাবে পূরণ করুন।');
+          setTimeout(() => event.target?.focus(), 50);
+        }
+      }, true);
+    });
+
+    function showRequestResponse(res, data) {
+      const msg = data.error || 'অনুরোধটি সম্পন্ন করা যায়নি।';
+      if (data.code === 'REQUEST_COOLDOWN') return showCustomDialog('warning', '২৪ ঘণ্টার সীমা', msg);
+      if (msg.includes('ক্যাপচা')) return showCustomDialog('error', 'ক্যাপচা সঠিক নয়', 'ক্যাপচার উত্তরটি ভুল হয়েছে বা মেয়াদ শেষ হয়েছে। নতুন ক্যাপচা নিয়ে আবার চেষ্টা করুন।');
+      if (res.status === 429) return showCustomDialog('warning', 'অনেকবার চেষ্টা হয়েছে', msg);
+      if (res.status === 409) return showCustomDialog('warning', 'তথ্য আগে থেকেই আছে', msg);
+      if (res.status >= 500) return showCustomDialog('error', 'সার্ভার সমস্যা', 'সাময়িকভাবে সার্ভারে সমস্যা হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।');
+      return showCustomDialog('error', 'আবেদন সম্পন্ন হয়নি', msg);
+    }
 
     function updateThanaOptions(districtElemId, thanaElemId, includeAllOption = false, selectedThana = '') {
       const distSelect = document.getElementById(districtElemId);
@@ -666,22 +724,22 @@
         btn.innerHTML = 'জরুরি রিকোয়েস্ট সাবমিট করুন';
 
         if (!res.ok) {
-          alertBox.className = 'p-4 rounded-xl text-sm font-semibold bg-rose-50 text-rose-800 block';
-          alertBox.textContent = data.error || 'রিকোয়েস্ট প্রক্রিয়া সম্পন্ন করা যায়নি।';
+          showRequestResponse(res, data);
+          alertBox.className = 'hidden';
           loadCaptcha();
           return;
         }
 
-        alertBox.className = 'p-4 rounded-xl text-sm font-semibold bg-emerald-50 text-emerald-800 block';
-        alertBox.textContent = data.message || 'আপনার জরুরি রক্তের রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে! রক্তদাতাদের নিরাপত্তা রক্ষায় পাবলিক সার্চ বন্ধ রেখে সিস্টেম স্বয়ংক্রিয়ভাবে নিকটবর্তী ডোনারদের অবহিত করবে।';
+        alertBox.className = 'hidden';
+        showCustomDialog('success', 'রক্তের আবেদন সম্পন্ন', data.message || 'আপনার জরুরি রক্তের আবেদন সফলভাবে গ্রহণ করা হয়েছে। নিকটবর্তী ডোনারদের জানানো হচ্ছে।');
         document.getElementById('blood-request-form').reset();
         loadCaptcha();
         loadStats();
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = 'জরুরি রিকোয়েস্ট সাবমিট করুন';
-        alertBox.className = 'p-4 rounded-xl text-sm font-semibold bg-rose-50 text-rose-800 block';
-        alertBox.textContent = 'ত্রুটি: ' + err.message;
+        alertBox.className = 'hidden';
+        showCustomDialog('error', 'সংযোগ সমস্যা', 'সার্ভারের সাথে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
         loadCaptcha();
       }
     }
@@ -727,17 +785,19 @@
         }
         btn.disabled = false;
         if (!res.ok) {
-          alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 block';
-          alertBox.textContent = data.error || 'নিবন্ধন ব্যর্থ হয়েছে';
+          showRequestResponse(res, data);
+          alertBox.className = 'hidden';
+          loadDonorCaptcha();
           return;
         }
-        showDonorCardModal(payload);
         closeDonorModal();
+        showCustomDialog('success', 'ডোনার নিবন্ধন সফল', data.message || 'আপনার ডোনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।');
+        showDonorCardModal(payload);
         loadStats();
       } catch (err) {
         btn.disabled = false;
-        alertBox.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 block';
-        alertBox.textContent = 'ত্রুটি: ' + err.message;
+        alertBox.className = 'hidden';
+        showCustomDialog('error', 'সংযোগ সমস্যা', 'সার্ভারের সাথে সংযোগ করা যায়নি। কিছুক্ষণ পর আবার চেষ্টা করুন।');
       }
     }
 
@@ -798,9 +858,9 @@
         `#BRYBDPF #Rangpur #BloodDonation #SaveLives #রংপুর_বিভাগ #স্বেচ্ছায়_রক্তদান`;
 
       navigator.clipboard.writeText(caption).then(() => {
-        alert('✓ ফেসবুক পোস্ট ক্যাপশন সফলভাবে কপি করা হয়েছে! এখন ফেসবুক পোস্টে পেস্ট করে ছবি সহ শেয়ার করুন।');
+        showCustomDialog('success', 'ক্যাপশন কপি হয়েছে', 'ফেসবুক পোস্টে পেস্ট করে ছবি সহ শেয়ার করুন।');
       }).catch(() => {
-        alert('কপি ব্যর্থ হয়েছে');
+        showCustomDialog('error', 'কপি করা যায়নি', 'আপনার ব্রাউজারে clipboard permission চালু আছে কি না দেখুন।');
       });
     }
 

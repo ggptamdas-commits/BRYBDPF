@@ -903,7 +903,18 @@ export async function onRequest(context) {
 
           const cleanPhone = normalizePhone(contact_phone);
           if (!isValidPhone(cleanPhone)) {
-            return json({ error: "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।" }, 400);
+            return json({ error: "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।", code: "INVALID_PHONE" }, 400);
+          }
+
+          const recentRequest = await env.DB.prepare(
+            "SELECT id, created_at FROM blood_requests WHERE contact_phone = ? AND created_at >= datetime('now', '-24 hours') ORDER BY created_at DESC LIMIT 1"
+          ).bind(cleanPhone).first();
+          if (recentRequest) {
+            return json({
+              error: "এই মোবাইল নম্বর থেকে গত ২৪ ঘণ্টায় একটি রক্তের আবেদন করা হয়েছে। ২৪ ঘণ্টা পূর্ণ হলে আবার আবেদন করতে পারবেন।",
+              code: "REQUEST_COOLDOWN",
+              last_request_id: recentRequest.id
+            }, 429);
           }
 
           const insertReqStmt = env.DB.prepare(`

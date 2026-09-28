@@ -389,6 +389,17 @@
     <span id="toastMsg"></span>
   </div>
 
+  <div id="admin-dialog" class="hidden fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div class="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden text-center">
+      <div id="admin-dialog-icon" class="mx-auto mt-7 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"></div>
+      <div class="px-6 pt-4 pb-6">
+        <h3 id="admin-dialog-title" class="text-xl font-bold text-gray-900"></h3>
+        <p id="admin-dialog-message" class="mt-2 text-sm leading-7 text-gray-600 whitespace-pre-line"></p>
+        <button type="button" onclick="closeAdminDialog()" class="mt-6 w-full h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold">ঠিক আছে</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Script Logic -->
   <script>
     let currentAdmin = null;
@@ -404,6 +415,35 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     }
+
+    function showAdminDialog(type, title, message) {
+      const dialog = document.getElementById('admin-dialog');
+      const icon = document.getElementById('admin-dialog-icon');
+      const isSuccess = type === 'success';
+      icon.textContent = isSuccess ? '✅' : (type === 'warning' ? '⏳' : '⚠️');
+      icon.className = 'mx-auto mt-7 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl ' + (isSuccess ? 'bg-emerald-50 text-emerald-600' : type === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600');
+      document.getElementById('admin-dialog-title').textContent = title;
+      document.getElementById('admin-dialog-message').textContent = message;
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+    }
+
+    function closeAdminDialog() {
+      const dialog = document.getElementById('admin-dialog');
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+    }
+
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('invalid', event => {
+        event.preventDefault();
+        const dialog = document.getElementById('admin-dialog');
+        if (!dialog.classList.contains('flex')) {
+          showAdminDialog('warning', 'তথ্য অসম্পূর্ণ', 'প্রয়োজনীয় সব ঘর সঠিকভাবে পূরণ করুন।');
+          setTimeout(() => event.target?.focus(), 50);
+        }
+      }, true);
+    });
 
     function showToast(msg, type = 'success') {
       const toast = document.getElementById('toast');
@@ -510,12 +550,12 @@
           document.getElementById('dashboardSection').classList.remove('hidden');
           initPortal();
         } else {
-          errDiv.textContent = data.error || 'ভুল ইমেইল অথবা পাসওয়ার্ড';
-          errDiv.classList.remove('hidden');
+          errDiv.classList.add('hidden');
+          showAdminDialog('error', 'ভুল পাসওয়ার্ড বা ইমেইল', data.error || 'ইমেইল অথবা পাসওয়ার্ড সঠিক নয়। আবার চেষ্টা করুন।');
         }
       } catch (err) {
-        errDiv.textContent = 'সার্ভার সংযোগ সমস্যা!';
-        errDiv.classList.remove('hidden');
+        errDiv.classList.add('hidden');
+        showAdminDialog('error', 'সার্ভার সংযোগ সমস্যা', 'সার্ভারের সাথে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
       } finally {
         btn.disabled = false;
         btn.textContent = 'লগইন করুন';
