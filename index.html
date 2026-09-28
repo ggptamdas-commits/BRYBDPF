@@ -22,6 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -417,6 +418,17 @@
             <input type="date" id="reg-last-date" class="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs outline-none">
           </div>
         </div>
+        <div class="rounded-2xl border border-dashed border-crimson-300 bg-rose-50/60 p-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white text-crimson-600 border border-rose-100 flex items-center justify-center shrink-0">📷</div>
+            <div class="min-w-0 flex-1">
+              <label for="reg-photo" class="block text-xs font-bold text-slate-800 mb-1">ডোনার কার্ডের জন্য ছবি (ঐচ্ছিক)</label>
+              <p class="text-[11px] leading-5 text-slate-500 mb-2">ছবিটি শুধু এই ডিভাইসে কার্ড তৈরির জন্য ব্যবহার হবে—সার্ভার বা ডাটাবেজে সংরক্ষণ করা হবে না।</p>
+              <input type="file" id="reg-photo" accept="image/*" onchange="previewDonorPhoto(this)" class="block w-full text-xs text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-crimson-600 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white hover:file:bg-crimson-700">
+              <p id="reg-photo-status" class="hidden mt-2 text-[11px] text-emerald-700 font-semibold"></p>
+            </div>
+          </div>
+        </div>
 
         <!-- Anti-Bot Captcha Verification -->
         <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
@@ -453,60 +465,42 @@
       </div>
 
       <!-- VISUAL DONOR CARD -->
-      <div id="donor-card-ui" class="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#881337] via-[#e11d48] to-[#172033] text-white shadow-2xl ring-1 ring-white/20">
-        <div class="absolute -right-16 -top-20 w-56 h-56 rounded-full bg-white/10 blur-2xl pointer-events-none"></div>
-        <div class="absolute -left-20 -bottom-24 w-64 h-64 rounded-full bg-rose-300/10 blur-3xl pointer-events-none"></div>
-        <div class="absolute right-5 bottom-2 opacity-[0.07] pointer-events-none">
-          <svg class="w-56 h-56 fill-current" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
-        </div>
-
-        <div class="relative p-5 sm:p-6">
-          <div class="flex items-start justify-between gap-4 pb-4 border-b border-white/20">
-            <div class="flex items-center gap-3">
-              <div class="w-11 h-11 rounded-2xl bg-white text-rose-600 flex items-center justify-center shadow-lg shadow-black/10">
-                <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
-              </div>
+      <div id="donor-card-ui" class="relative overflow-hidden rounded-[28px] bg-white text-slate-900 shadow-2xl ring-1 ring-slate-200 aspect-[1.62] min-h-[290px]">
+        <div class="absolute top-0 right-0 w-[42%] h-full bg-gradient-to-br from-crimson-700 via-crimson-600 to-[#991b1b] [clip-path:ellipse(82%_70%_at_100%_0%)]"></div>
+        <div class="absolute -bottom-20 left-[34%] w-72 h-36 rounded-[50%] bg-rose-100/80 rotate-[-8deg]"></div>
+        <div class="relative h-full p-4 sm:p-5 flex flex-col">
+          <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-10 h-10 rounded-full bg-crimson-700 text-white flex items-center justify-center text-2xl shadow-md">♥</div>
               <div>
-                <div class="text-sm font-black tracking-[0.15em] uppercase">BRYBDPF</div>
-                <div class="text-[10px] sm:text-xs text-rose-100 mt-0.5">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</div>
+                <div class="text-[15px] sm:text-xl font-black tracking-tight"><span class="text-crimson-700">BLOOD</span> DONOR CARD</div>
+                <div class="text-[8px] sm:text-[10px] tracking-[0.25em] text-slate-500 font-semibold uppercase">Give blood • Save lives</div>
               </div>
             </div>
-            <div class="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/15 border border-emerald-200/30 text-emerald-100 text-[10px] font-bold">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-300"></span> VERIFIED
+            <div class="text-right text-white leading-tight relative z-10 pr-1">
+              <div class="text-[10px] sm:text-xs font-bold">Be a Hero</div><div class="text-[9px] sm:text-[11px]">Donate Blood ♥</div>
             </div>
           </div>
-
-          <div class="relative mt-5 grid grid-cols-[1fr_auto] gap-4 items-center">
-            <div class="min-w-0">
-              <div class="text-[10px] text-rose-100/80 font-semibold tracking-wider">OFFICIAL DONOR MEMBER</div>
-              <div id="card-donor-name" class="mt-1 text-2xl sm:text-3xl font-black tracking-tight truncate">রক্তদাতা</div>
-              <div class="mt-2 flex items-start gap-2 text-xs sm:text-sm text-white/90">
-                <span class="mt-0.5">📍</span><span id="card-donor-location" class="leading-5">রংপুর</span>
-              </div>
-              <div class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/15 border border-white/15 text-[10px] sm:text-xs text-rose-50">
-                <span>🩸</span><span>মানবতার জন্য প্রস্তুত</span>
-              </div>
+          <div class="relative z-10 flex-1 grid grid-cols-[82px_1fr_76px] sm:grid-cols-[122px_1fr_100px] gap-3 sm:gap-5 items-center py-3">
+            <div class="w-[82px] h-[96px] sm:w-[122px] sm:h-[140px] rounded-2xl overflow-hidden bg-sky-100 border-4 border-white shadow-md">
+              <img id="card-donor-photo" alt="Donor photo" class="w-full h-full object-cover hidden">
+              <div id="card-photo-placeholder" class="w-full h-full flex flex-col items-center justify-center text-crimson-700"><span class="text-3xl">♥</span><span class="text-[8px] font-bold">DONOR</span></div>
             </div>
-            <div class="shrink-0 w-24 h-24 sm:w-28 sm:h-28 rounded-[26px] bg-white text-rose-600 flex flex-col items-center justify-center shadow-xl shadow-black/15 ring-4 ring-white/10">
-              <span id="card-donor-bg" class="text-4xl sm:text-5xl font-black leading-none">O+</span>
-              <span class="mt-2 text-[9px] font-black tracking-widest text-slate-500 uppercase">BLOOD GROUP</span>
+            <div class="space-y-1 text-[10px] sm:text-sm leading-tight min-w-0">
+              <div class="truncate"><span class="text-slate-500 inline-block w-16 sm:w-24">নাম</span><b>:</b> <b id="card-donor-name" class="ml-1 text-slate-900">রক্তদাতা</b></div>
+              <div><span class="text-slate-500 inline-block w-16 sm:w-24">ফোন</span><b>:</b> <span id="card-donor-phone" class="ml-1 font-semibold">—</span></div>
+              <div><span class="text-slate-500 inline-block w-16 sm:w-24">এলাকা</span><b>:</b> <span id="card-donor-location" class="ml-1">রংপুর</span></div>
+              <div><span class="text-slate-500 inline-block w-16 sm:w-24">বয়স</span><b>:</b> <span id="card-donor-age" class="ml-1">—</span></div>
+              <div><span class="text-slate-500 inline-block w-16 sm:w-24">Donor ID</span><b>:</b> <span id="card-donor-id" class="ml-1 font-mono">BRY-0000</span></div>
             </div>
-          </div>
-
-          <div class="relative mt-5 grid grid-cols-2 gap-2.5">
-            <div class="rounded-2xl bg-white/10 border border-white/15 px-3 py-2.5">
-              <div class="text-[9px] text-rose-100/70 uppercase tracking-wider">Member status</div>
-              <div class="mt-0.5 text-xs font-bold text-white">সক্রিয় ডোনার</div>
-            </div>
-            <div class="rounded-2xl bg-white/10 border border-white/15 px-3 py-2.5">
-              <div class="text-[9px] text-rose-100/70 uppercase tracking-wider">Registered</div>
-              <div id="card-donor-date" class="mt-0.5 text-xs font-bold text-white">২৭ সেপ্টেম্বর ২০২৬</div>
+            <div class="relative z-10 text-center">
+              <div class="w-[70px] h-[70px] sm:w-[92px] sm:h-[92px] rounded-xl bg-white p-1 shadow-lg mx-auto"><canvas id="card-qr-code" width="160" height="160" class="w-full h-full"></canvas></div>
+              <div class="text-[7px] sm:text-[9px] font-bold text-white mt-1">SCAN TO VERIFY</div>
             </div>
           </div>
-
-          <div class="relative mt-5 pt-3 border-t border-white/20 flex items-center justify-between gap-3">
-            <span class="text-[10px] font-mono tracking-wider text-rose-100/80">brybdpf.pages.dev</span>
-            <span class="text-[10px] font-semibold text-white/80 text-right">এক ব্যাগ রক্ত<br class="sm:hidden"> • একটি নতুন জীবন</span>
+          <div class="relative z-10 border-t border-slate-200 pt-2 flex items-end justify-between gap-2">
+            <div class="text-[9px] sm:text-xs font-bold text-crimson-700">A single drop of blood can save a life</div>
+            <div class="text-right"><div id="card-donor-date" class="text-[7px] sm:text-[9px] text-slate-500"></div><div class="text-[8px] sm:text-[10px] font-mono text-slate-500">brybdpf.pages.dev</div></div>
           </div>
         </div>
       </div>
@@ -789,6 +783,7 @@
       const mohollaVal = document.getElementById('reg-moholla') ? document.getElementById('reg-moholla').value.trim() : '';
       const fullArea = mohollaVal ? `${thanaVal} (${mohollaVal})` : thanaVal;
 
+      const localPhotoDataUrl = donorPhotoDataUrl;
       const payload = {
         name: document.getElementById('reg-name').value,
         blood_group: document.getElementById('reg-bg').value,
@@ -827,7 +822,7 @@
         }
         closeDonorModal();
         showCustomDialog('success', 'ডোনার নিবন্ধন সফল', data.message || 'আপনার ডোনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।');
-        showDonorCardModal(payload);
+        showDonorCardModal({ ...payload, photoDataUrl: localPhotoDataUrl });
         loadStats(true);
       } catch (err) {
         btn.disabled = false;
@@ -855,22 +850,72 @@
     });
   
     let registeredDonorData = null;
+    let donorPhotoDataUrl = '';
+    const DONOR_CARD_SITE_URL = 'https://brybdpf.pages.dev';
+
+    function previewDonorPhoto(input) {
+      const file = input.files && input.files[0];
+      const status = document.getElementById('reg-photo-status');
+      donorPhotoDataUrl = '';
+      if (!file) {
+        status.classList.add('hidden');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        input.value = '';
+        showCustomDialog('error', 'ছবির ফরম্যাট সঠিক নয়', 'শুধু JPG, PNG বা WEBP ছবি নির্বাচন করুন।');
+        return;
+      }
+      if (file.size > 3 * 1024 * 1024) {
+        input.value = '';
+        showCustomDialog('warning', 'ছবিটি অনেক বড়', '৩ MB-এর মধ্যে একটি ছবি নির্বাচন করুন। ছবিটি সার্ভারে পাঠানো হবে না।');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        donorPhotoDataUrl = String(reader.result || '');
+        status.textContent = '✓ ছবি প্রস্তুত—শুধু এই ডিভাইসের কার্ডে ব্যবহার হবে';
+        status.classList.remove('hidden');
+      };
+      reader.onerror = () => showCustomDialog('error', 'ছবি পড়া যায়নি', 'আবার একটি ছবি নির্বাচন করুন।');
+      reader.readAsDataURL(file);
+    }
+
+    function renderDonorCardQr() {
+      const qrCanvas = document.getElementById('card-qr-code');
+      if (!qrCanvas || !window.QRious) return;
+      new QRious({ element: qrCanvas, value: DONOR_CARD_SITE_URL, size: 160, level: 'H', background: 'white', foreground: '#111827' });
+    }
 
     function showDonorCardModal(donor) {
       registeredDonorData = donor;
       document.getElementById('card-donor-name').textContent = donor.name || 'রক্তদাতা';
       document.getElementById('card-donor-bg').textContent = donor.blood_group || 'O+';
+      document.getElementById('card-donor-phone').textContent = donor.phone || '—';
+      document.getElementById('card-donor-age').textContent = donor.age || '—';
       document.getElementById('card-donor-location').textContent = (donor.area ? donor.area + ', ' : '') + (donor.district || 'রংপুর');
-      
+      const donorIdSeed = String(donor.phone || Date.now()).replace(/\D/g, '').slice(-4).padStart(4, '0');
+      document.getElementById('card-donor-id').textContent = `BRY-${new Date().getFullYear()}-${donorIdSeed}`;
+
+      const photo = document.getElementById('card-donor-photo');
+      const placeholder = document.getElementById('card-photo-placeholder');
+      if (donor.photoDataUrl) {
+        photo.src = donor.photoDataUrl;
+        photo.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+      } else {
+        photo.removeAttribute('src');
+        photo.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+      }
+
       const now = new Date();
       const months = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
       const dateStr = now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
       document.getElementById('card-donor-date').textContent = 'নিবন্ধন: ' + dateStr;
-
-      // Facebook share link with url
-      const shareUrl = encodeURIComponent('https://brybdpf.pages.dev');
+      const shareUrl = encodeURIComponent(DONOR_CARD_SITE_URL);
       document.getElementById('card-fb-share-btn').href = `https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`;
-
+      renderDonorCardQr();
       document.getElementById('donor-card-modal').classList.remove('hidden');
     }
 
@@ -899,125 +944,60 @@
       });
     }
 
-    function downloadDonorCardImage() {
+    async function downloadDonorCardImage() {
       if (!registeredDonorData) return;
       const canvas = document.getElementById('donor-card-canvas');
       const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = canvas.width = 1200;
+      const h = canvas.height = 700;
+      const radius = 42;
+      const roundRect = (x, y, width, height, r) => { ctx.beginPath(); ctx.roundRect(x, y, width, height, r); };
 
-      // Draw Gradient Background
-      const grad = ctx.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, '#991b1b');
-      grad.addColorStop(0.5, '#dc2626');
-      grad.addColorStop(1, '#0f172a');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 36);
-      ctx.fill();
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#ffffff'; roundRect(0, 0, w, h, radius); ctx.fill();
+      ctx.save(); ctx.clip();
+      const red = ctx.createLinearGradient(860, 0, w, 400); red.addColorStop(0, '#be123c'); red.addColorStop(1, '#991b1b');
+      ctx.fillStyle = red; ctx.beginPath(); ctx.ellipse(w + 30, 30, 420, 430, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffe4e6'; ctx.beginPath(); ctx.ellipse(730, 700, 410, 130, -0.12, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 3; roundRect(2, 2, w - 4, h - 4, radius); ctx.stroke();
 
-      // Border
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 36);
-      ctx.stroke();
+      ctx.fillStyle = '#be123c'; ctx.beginPath(); ctx.arc(82, 82, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 42px Arial'; ctx.textAlign = 'center'; ctx.fillText('♥', 82, 96); ctx.textAlign = 'left';
+      ctx.fillStyle = '#be123c'; ctx.font = '900 34px Arial'; ctx.fillText('BLOOD', 132, 75);
+      ctx.fillStyle = '#111827'; ctx.fillText(' DONOR CARD', 265, 75);
+      ctx.fillStyle = '#64748b'; ctx.font = '20px Arial'; ctx.letterSpacing = '5px'; ctx.fillText('GIVE BLOOD  •  SAVE LIVES', 134, 108); ctx.letterSpacing = '0px';
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'right'; ctx.fillText('Be a Hero', 1120, 74); ctx.font = '20px Arial'; ctx.fillText('Donate Blood ♥', 1120, 104); ctx.textAlign = 'left';
+      ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(48, 140); ctx.lineTo(1152, 140); ctx.stroke();
 
-      // Top line
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(40, 110);
-      ctx.lineTo(w - 40, 110);
-      ctx.stroke();
+      // Photo: local data URL only; never fetched from or written to the server.
+      const photo = document.getElementById('card-donor-photo');
+      const px = 52, py = 178, pw = 250, ph = 300;
+      ctx.save(); roundRect(px, py, pw, ph, 24); ctx.clip(); ctx.fillStyle = '#e0f2fe'; ctx.fillRect(px, py, pw, ph);
+      if (photo && photo.complete && photo.naturalWidth) ctx.drawImage(photo, px, py, pw, ph);
+      else { ctx.fillStyle = '#be123c'; ctx.font = 'bold 70px Arial'; ctx.textAlign = 'center'; ctx.fillText('♥', px + pw / 2, py + 170); ctx.textAlign = 'left'; }
+      ctx.restore();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 8; roundRect(px, py, pw, ph, 24); ctx.stroke();
 
-      // Header Texts
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 30px "Hind Siliguri", sans-serif';
-      ctx.fillText('BRYBDPF রংপুর বিভাগ ব্লাড নেটওয়ার্ক', 100, 68);
+      const d = registeredDonorData;
+      const labelX = 350, valueX = 560;
+      const rows = [['Name', d.name || 'রক্তদাতা'], ['Blood Group', d.blood_group || 'O+'], ['Donor ID', document.getElementById('card-donor-id').textContent], ['Age', d.age || '—'], ['Contact', d.phone || '—']];
+      rows.forEach((row, i) => { const y = 225 + i * 52; ctx.fillStyle = '#334155'; ctx.font = '23px Arial'; ctx.fillText(row[0], labelX, y); ctx.fillText(':', 515, y); ctx.fillStyle = i === 1 ? '#be123c' : '#111827'; ctx.font = i === 0 ? 'bold 26px Arial' : (i === 1 ? 'bold 32px Arial' : '24px Arial'); ctx.fillText(String(row[1]), valueX, y); });
+      ctx.fillStyle = '#334155'; ctx.font = '22px Arial'; ctx.fillText('Location', labelX, 495); ctx.fillText(':', 515, 495); ctx.fillText((d.area ? d.area + ', ' : '') + (d.district || 'রংপুর'), valueX, 495);
 
-      ctx.fillStyle = '#fecdd3';
-      ctx.font = '20px "Hind Siliguri", sans-serif';
-      ctx.fillText('অফিসিয়াল ডিজিটাল রক্তদাতা পরিচয়পত্র', 100, 95);
+      const qr = document.getElementById('card-qr-code');
+      if (qr) { ctx.fillStyle = '#fff'; roundRect(948, 235, 150, 150, 16); ctx.fill(); ctx.drawImage(qr, 958, 245, 130, 130); }
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center'; ctx.fillText('SCAN FOR VERIFICATION', 1023, 415); ctx.textAlign = 'left';
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(350, 540); ctx.lineTo(850, 540); ctx.stroke();
+      ctx.fillStyle = '#be123c'; ctx.font = 'bold 22px Arial'; ctx.fillText('A single drop of blood can save a life', 52, 635);
+      ctx.fillStyle = '#64748b'; ctx.font = '20px monospace'; ctx.textAlign = 'right'; ctx.fillText('brybdpf.pages.dev', 1148, 635); ctx.textAlign = 'left';
 
-      // Verified Badge Pill
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
-      ctx.beginPath();
-      ctx.roundRect(w - 260, 48, 210, 42, 21);
-      ctx.fill();
-      ctx.strokeStyle = '#34d399';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.roundRect(w - 260, 48, 210, 42, 21);
-      ctx.stroke();
-
-      ctx.fillStyle = '#a7f3d0';
-      ctx.font = 'bold 18px "Hind Siliguri", sans-serif';
-      ctx.fillText('✓ ভেরিফাইড মেম্বার', w - 240, 75);
-
-      // Donor Name Label & Name
-      ctx.fillStyle = '#fecdd3';
-      ctx.font = '19px "Hind Siliguri", sans-serif';
-      ctx.fillText('রক্তদাতার নাম:', 50, 180);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 38px "Hind Siliguri", sans-serif';
-      ctx.fillText(registeredDonorData.name || 'রক্তদাতা', 50, 230);
-
-      // Location
-      ctx.fillStyle = '#f1f5f9';
-      ctx.font = '24px "Hind Siliguri", sans-serif';
-      const loc = (registeredDonorData.area ? registeredDonorData.area + ', ' : '') + (registeredDonorData.district || 'রংপুর');
-      ctx.fillText('📍 এলাকা: ' + loc, 50, 285);
-
-      // Date
-      const now = new Date();
-      const months = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
-      const dateStr = now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
-      ctx.fillStyle = '#cbd5e1';
-      ctx.font = '20px "Hind Siliguri", sans-serif';
-      ctx.fillText('নিবন্ধন তারিখ: ' + dateStr, 50, 335);
-
-      // Blood Group Box on Right
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.roundRect(w - 260, 170, 200, 200, 28);
-      ctx.fill();
-
-      ctx.fillStyle = '#dc2626';
-      ctx.font = 'bold 72px "Hind Siliguri", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(registeredDonorData.blood_group || 'O+', w - 160, 285);
-
-      ctx.fillStyle = '#64748b';
-      ctx.font = 'bold 22px "Hind Siliguri", sans-serif';
-      ctx.fillText('রক্তের গ্রুপ', w - 160, 335);
-      ctx.textAlign = 'left';
-
-      // Footer Line
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.beginPath();
-      ctx.moveTo(40, 420);
-      ctx.lineTo(w - 40, 420);
-      ctx.stroke();
-
-      // Footer Text
-      ctx.fillStyle = '#fecdd3';
-      ctx.font = 'bold 22px monospace';
-      ctx.fillText('brybdpf.pages.dev', 50, 470);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'italic 20px "Hind Siliguri", sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('এক ব্যাগ রক্ত • একটি নতুন জীবন', w - 50, 470);
-      ctx.textAlign = 'left';
-
-      // Download
       const link = document.createElement('a');
-      link.download = `BRYBDPF_Donor_Card_${registeredDonorData.name || 'Member'}.png`;
+      link.download = `BRYBDPF_Donor_Card_${d.name || 'Member'}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     }
+
   </script>
 </body>
 </html>
