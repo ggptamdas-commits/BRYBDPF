@@ -821,8 +821,13 @@
           return;
         }
         closeDonorModal();
-        showCustomDialog('success', 'ডোনার নিবন্ধন সফল', data.message || 'আপনার ডোনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।');
-        showDonorCardModal({ ...payload, photoDataUrl: localPhotoDataUrl });
+        try {
+          showDonorCardModal({ ...payload, photoDataUrl: localPhotoDataUrl });
+          showCustomDialog('success', 'ডোনার নিবন্ধন সফল', data.message || 'আপনার ডোনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।');
+        } catch (cardError) {
+          console.error('Local donor card rendering error:', cardError);
+          showCustomDialog('success', 'ডোনার নিবন্ধন সফল', 'আপনার তথ্য সফলভাবে সংরক্ষিত হয়েছে। কার্ডটি তৈরি করতে সাময়িক সমস্যা হয়েছে—পেজটি রিফ্রেশ করে আবার কার্ড খুলুন।');
+        }
         loadStats(true);
       } catch (err) {
         btn.disabled = false;
@@ -883,8 +888,8 @@
 
     function renderDonorCardQr() {
       const qrCanvas = document.getElementById('card-qr-code');
-      if (!qrCanvas || !window.QRious) return;
-      new QRious({ element: qrCanvas, value: DONOR_CARD_SITE_URL, size: 160, level: 'H', background: 'white', foreground: '#111827' });
+      if (!qrCanvas || typeof window.QRious !== 'function') return;
+      new window.QRious({ element: qrCanvas, value: DONOR_CARD_SITE_URL, size: 160, level: 'H', background: 'white', foreground: '#111827' });
     }
 
     function showDonorCardModal(donor) {
@@ -912,7 +917,8 @@
       const now = new Date();
       const months = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
       const dateStr = now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
-      document.getElementById('card-donor-date').textContent = 'নিবন্ধন: ' + dateStr;
+      const dateEl = document.getElementById('card-donor-date');
+      if (dateEl) dateEl.textContent = 'নিবন্ধন: ' + dateStr;
       const shareUrl = encodeURIComponent(DONOR_CARD_SITE_URL);
       document.getElementById('card-fb-share-btn').href = `https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`;
       renderDonorCardQr();
