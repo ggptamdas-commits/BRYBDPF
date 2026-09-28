@@ -1,0 +1,14 @@
+
+android-apk/.keystore-password
+android-apk/KEYSTORE_INFO.txt
+android-apk/android.keystore
+
+# Android generated binaries
+android-apk/app-release-*.apk
+android-apk/app-release-*.aab
+android-apk/app/build/
+android-apk/.gradle/
+android-apk/build/
+android-apk/*.idsig
+android-apk/manifest-checksum.txt
+android-apk/store_icon.png
