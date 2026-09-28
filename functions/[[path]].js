@@ -1,4 +1,33 @@
 
+function publicStatsCacheKey(origin) {
+  return new Request(`${origin}/api/stats?edge-cache=v2`);
+}
+
+function invalidatePublicStatsCache(origin, ctx) {
+  try {
+    if (typeof caches !== "undefined" && caches.default) {
+      ctx.waitUntil(caches.default.delete(publicStatsCacheKey(origin)));
+    }
+  } catch (_) {}
+}
+
+async function readPublicStatsCache(origin) {
+  try {
+    if (typeof caches !== "undefined" && caches.default) {
+      return await caches.default.match(publicStatsCacheKey(origin));
+    }
+  } catch (_) {}
+  return null;
+}
+
+function writePublicStatsCache(origin, ctx, response) {
+  try {
+    if (typeof caches !== "undefined" && caches.default) {
+      ctx.waitUntil(caches.default.put(publicStatsCacheKey(origin), response.clone()));
+    }
+  } catch (_) {}
+}
+
 function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -10,6 +39,7 @@ function json(data, status = 200, extraHeaders = {}) {
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Cache-Control": "no-store",
       ...extraHeaders
     }
   });
@@ -414,7 +444,7 @@ function getMainAdminKeyboard() {
   ];
 }
 
-async function handleTelegramUpdate(update, env, ctx) {
+async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
   let token = "";
   let chatId = null;
   try {
@@ -567,6 +597,7 @@ async function handleTelegramUpdate(update, env, ctx) {
         const allowed = new Set(["Matched", "Fulfilled", "Closed"]);
         if (allowed.has(action)) {
           await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(action, requestId).run();
+          if (publicOrigin) invalidatePublicStatsCache(publicOrigin, ctx);
           await tgSendOrEdit(token, chatId, messageId, `✅ রিকোয়েস্ট <b>#${requestId}</b> এখন <b>${action}</b>।`, [[{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
           return;
         }
@@ -592,6 +623,7 @@ async function handleTelegramUpdate(update, env, ctx) {
         const nextDate = nextAvailable.toISOString().slice(0, 10);
         const nextDateBn = nextAvailable.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
         await env.DB.prepare("UPDATE donors SET total_donations = COALESCE(total_donations, 0) + 1, last_donation_date = date('now'), next_available_date = ?, is_available = 0, updated_at = datetime('now') WHERE id = ?").bind(nextDate, donorId).run();
+        if (publicOrigin) invalidatePublicStatsCache(publicOrigin, ctx);
         await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
         await tgSendOrEdit(token, chatId, messageId, `✅ <b>রক্তদান সম্পন্ন হিসেবে সংরক্ষণ হয়েছে</b>\n\n👤 ${escapeHtml(donor.name)} (${escapeHtml(donor.blood_group)})\n📅 আজকের ডোনেশন যোগ হয়েছে\n⏸️ ${months} মাসের জন্য আন-অ্যাভেইলেবল\n🟢 আবার রক্ত দিতে পারবেন: <b>${nextDateBn}</b>`, [[{ text: "💉 আরেকজনের ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
         return;
@@ -775,7 +807,7 @@ export async function onRequest(context) {
           const suppliedSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
           if (!expectedSecret || suppliedSecret !== expectedSecret) return json({ ok: false }, 403);
           const update = await request.json();
-          ctx.waitUntil(handleTelegramUpdate(update, env, ctx));
+          ctx.waitUntil(handleTelegramUpdate(update, env, ctx, url.origin));
           return json({ ok: true });
         } catch (e) {
           return json({ ok: false, error: e.message }, 500);
@@ -820,6 +852,8 @@ export async function onRequest(context) {
       }
 
       if (path === "/api/stats" && method === "GET") {
+        const edgeCachedStats = await readPublicStatsCache(url.origin);
+        if (edgeCachedStats) return edgeCachedStats;
         const [donorsRes, availRes, reqRes, distRes, pendingRes, completedRes] = await Promise.all([
           env.DB.prepare("SELECT count(*) as count FROM donors").first(),
           env.DB.prepare("SELECT count(*) as count FROM donors WHERE (is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1").first(),
@@ -832,7 +866,7 @@ export async function onRequest(context) {
         const available_donors = availRes ? availRes.count : 0;
         const total_requests = reqRes ? reqRes.count : 0;
 
-        return json({
+        const statsResponse = json({
           total_donors,
           totalDonors: total_donors,
           available_donors,
@@ -843,7 +877,9 @@ export async function onRequest(context) {
           districtsCount: distRes?.count || 0,
           completed_requests: completedRes?.count || 0,
           pending_requests: pendingRes?.count || 0
-        }, 200, { 'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=120' });
+        }, 200, { 'Cache-Control': 'public, max-age=10, s-maxage=10, stale-while-revalidate=30' });
+        writePublicStatsCache(url.origin, ctx, statsResponse);
+        return statsResponse;
       }
 
       if (path === "/api/donors/search") {
@@ -903,6 +939,7 @@ export async function onRequest(context) {
             agreed_data_save ? 1 : 0
           ).run();
 
+          invalidatePublicStatsCache(url.origin, ctx);
           return json({
             success: true,
             message: "অভিনন্দন! আপনার রক্তদাতা নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।"
@@ -1003,6 +1040,7 @@ export async function onRequest(context) {
             note: note || ""
           }, matchedDonors || []));
 
+          invalidatePublicStatsCache(url.origin, ctx);
           return json({
             success: true,
             message: "জরুরি রক্তের আবেদন সফলভাবে গৃহীত হয়েছে! রক্তদাতাদের দ্রুত নোটিফিকেশন পাঠানো হচ্ছে।",
@@ -1211,6 +1249,7 @@ export async function onRequest(context) {
           await env.DB.prepare(
             "UPDATE donors SET is_available = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
           ).bind(newStatus, newStatus, donorId).run();
+          invalidatePublicStatsCache(url.origin, ctx);
           return json({ success: true, is_active: newStatus, is_available: newStatus });
         }
 
@@ -1290,6 +1329,7 @@ export async function onRequest(context) {
           await env.DB.prepare(
             "UPDATE blood_requests SET status = ? WHERE id = ?"
           ).bind(status, reqId).run();
+          invalidatePublicStatsCache(url.origin, ctx);
 
           return json({ success: true, status });
         }

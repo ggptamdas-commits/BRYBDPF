@@ -369,15 +369,40 @@ export default `<!DOCTYPE html>
   </footer>
 
   <script>
-    async function loadStats() {
-      try {
-        const res = await fetch('/api/stats');
-        const d = await res.json();
-        document.getElementById('stat-total-donors').textContent = d.total_donors || 0;
-        document.getElementById('stat-avail-donors').textContent = d.available_donors || 0;
-        document.getElementById('stat-districts').textContent = (d.districts_count || 0) + ' টি';
-        document.getElementById('stat-requests').textContent = d.total_requests || 0;
-      } catch (e) {}
+    const PUBLIC_STATS_CACHE_KEY = 'brybdpf:public-stats:v2';
+    const PUBLIC_STATS_FRESH_MS = 8000;
+    let publicStatsPromise = null;
+
+    function renderPublicStats(d) {
+      document.getElementById('stat-total-donors').textContent = d.total_donors || 0;
+      document.getElementById('stat-avail-donors').textContent = d.available_donors || 0;
+      document.getElementById('stat-districts').textContent = (d.districts_count || 0) + ' টি';
+      document.getElementById('stat-requests').textContent = d.total_requests || 0;
+    }
+
+    function clearPublicStatsCache() {
+      try { localStorage.removeItem(PUBLIC_STATS_CACHE_KEY); } catch (_) {}
+    }
+
+    async function loadStats(force = false) {
+      if (force) clearPublicStatsCache();
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem(PUBLIC_STATS_CACHE_KEY) || 'null'); } catch (_) {}
+      if (!force && cached?.data) {
+        renderPublicStats(cached.data);
+        if (Date.now() - cached.savedAt < PUBLIC_STATS_FRESH_MS) return cached.data;
+      }
+      if (publicStatsPromise) return publicStatsPromise;
+      publicStatsPromise = fetch('/api/stats', { cache: force ? 'no-store' : 'default', headers: { Accept: 'application/json' } })
+        .then(res => res.json())
+        .then(d => {
+          renderPublicStats(d);
+          try { localStorage.setItem(PUBLIC_STATS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: d })); } catch (_) {}
+          return d;
+        })
+        .catch(() => cached?.data || null)
+        .finally(() => { publicStatsPromise = null; });
+      return publicStatsPromise;
     }
 
     async function loadCaptcha() {
@@ -473,7 +498,7 @@ export default `<!DOCTYPE html>
         alertBox.innerHTML = '<strong>সফল!</strong> ' + (data.message || 'আপনার রক্তের রিকোয়েস্ট সফলভাবে গ্রহণ করা হয়েছে।') + '<br><span class="text-xs text-emerald-700 mt-1 block">আমাদের অ্যাডমিন প্যানেল ও টেলিগ্রাম অ্যালার্টে রিকোয়েস্টটি পাঠানো হয়েছে। দ্রুত রক্তদাতা সমন্বয় করা হচ্ছে।</span>';
         document.getElementById('blood-request-form').reset();
         loadCaptcha();
-        loadStats();
+        loadStats(true);
       } catch (err) {
         submitBtn.disabled = false;
         submitBtn.innerHTML = 'জরুরি ব্লাড রিকোয়েস্ট পাঠান';
@@ -529,7 +554,7 @@ export default `<!DOCTYPE html>
         alertBox.textContent = data.message;
         setTimeout(() => {
           closeDonorModal();
-          loadStats();
+          loadStats(true);
           document.getElementById('donor-reg-form').reset();
         }, 2000);
       } catch (err) {

@@ -462,6 +462,36 @@
       setTimeout(() => toast.classList.add('hidden'), 4000);
     }
 
+    // Private admin cache: memory-only, short TTL, never shared across users.
+    const adminDataCache = new Map();
+    const adminDataInflight = new Map();
+    const ADMIN_CACHE_TTL_MS = 5000;
+
+    function clearAdminDataCache(prefix = '') {
+      for (const key of adminDataCache.keys()) {
+        if (!prefix || key.startsWith(prefix)) adminDataCache.delete(key);
+      }
+    }
+
+    async function fetchAdminJson(url, cacheKey, ttl = ADMIN_CACHE_TTL_MS) {
+      const now = Date.now();
+      const cached = adminDataCache.get(cacheKey);
+      if (cached && now - cached.savedAt < ttl) return cached.data;
+      if (adminDataInflight.has(cacheKey)) return adminDataInflight.get(cacheKey);
+      const promise = fetch(url, { headers: { Accept: 'application/json' } })
+        .then(async res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          adminDataCache.set(cacheKey, { savedAt: Date.now(), data });
+          return data;
+        })
+        .finally(() => adminDataInflight.delete(cacheKey));
+      adminDataInflight.set(cacheKey, promise);
+      return promise;
+    }
+
     // Check Setup and Session on Page Load
     async function initPortal() {
       try {
@@ -602,8 +632,8 @@
       tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-xl text-red-500"></i></td></tr>';
 
       try {
-        const res = await fetch(`/api/admin/requests?page=${page}&limit=10&status=${status}`);
-        const data = await res.json();
+        const requestsUrl = `/api/admin/requests?page=${page}&limit=10&status=${encodeURIComponent(status)}`;
+        const data = await fetchAdminJson(requestsUrl, `requests:${page}:${status}`);
         
         if (!data.requests || data.requests.length === 0) {
           tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">বিগত ১০ দিনে কোনো রিকোয়েস্ট পাওয়া যায়নি।</td></tr>';
@@ -693,6 +723,7 @@
         });
         if (res.ok) {
           showToast(`রিকোয়েস্ট #${id} স্ট্যাটাস আপডেট হয়েছে: ${newStatus}`, 'success');
+          clearAdminDataCache();
           loadRequests(currentReqPage);
         } else {
           showToast('স্ট্যাটাস আপডেট ব্যর্থ হয়েছে', 'error');
@@ -719,8 +750,8 @@
 
       try {
         const params = new URLSearchParams({ blood_group: bg || 'ALL', search });
-        const res = await fetch('/api/admin/donors?' + params.toString());
-        const data = await res.json();
+        const donorsUrl = '/api/admin/donors?' + params.toString();
+        const data = await fetchAdminJson(donorsUrl, `donors:${params.toString()}`);
 
         if (!data.donors || data.donors.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">কোনো ডোনার পাওয়া যায়নি।</td></tr>';
@@ -779,6 +810,7 @@
         const res = await fetch(`/api/admin/donors/${id}/toggle`, { method: 'POST' });
         if (res.ok) {
           showToast('ডোনার স্ট্যাটাস পরিবর্তিত হয়েছে', 'success');
+          clearAdminDataCache();
           loadDonors();
         }
       } catch (e) {
@@ -792,6 +824,7 @@
           const res = await fetch(`/api/admin/donors/${id}`, { method: 'DELETE' });
           if (res.ok) {
             showToast('ডোনার মুছে ফেলা হয়েছে', 'success');
+            clearAdminDataCache();
             loadDonors();
           }
         } catch (e) {
@@ -895,9 +928,8 @@
     // Load Settings
     async function loadSettings() {
       try {
-        const res = await fetch('/api/admin/settings');
-        if (res.ok) {
-          const data = await res.json();
+        const data = await fetchAdminJson('/api/admin/settings', 'settings');
+        if (data) {
           if (data.telegram_bot_token_masked) {
             document.getElementById('currentTgTokenMasked').textContent = 'বর্তমান টোকেন: ' + data.telegram_bot_token_masked;
           }
@@ -921,6 +953,7 @@
         });
         if (res.ok) {
           showToast('সেটিংস সফলভাবে সংরক্ষিত হয়েছে!', 'success');
+          clearAdminDataCache('settings');
           loadSettings();
         } else {
           showToast('সংরক্ষণ ব্যর্থ হয়েছে', 'error');

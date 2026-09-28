@@ -628,16 +628,41 @@
       }
     }
 
-    // Load stats
-    async function loadStats() {
-      try {
-        const res = await fetch('/api/stats');
-        const d = await res.json();
-        document.getElementById('stat-total-donors').textContent = d.total_donors || 0;
-        document.getElementById('stat-avail-donors').textContent = d.available_donors || 0;
-        document.getElementById('stat-districts').textContent = '৮টি জেলা';
-        document.getElementById('stat-requests').textContent = d.total_requests || 0;
-      } catch (e) {}
+    // Public stats: instant local render + short stale-while-revalidate refresh.
+    const PUBLIC_STATS_CACHE_KEY = 'brybdpf:public-stats:v2';
+    const PUBLIC_STATS_FRESH_MS = 8000;
+    let publicStatsPromise = null;
+
+    function renderPublicStats(d) {
+      document.getElementById('stat-total-donors').textContent = d.total_donors || 0;
+      document.getElementById('stat-avail-donors').textContent = d.available_donors || 0;
+      document.getElementById('stat-districts').textContent = '৮টি জেলা';
+      document.getElementById('stat-requests').textContent = d.total_requests || 0;
+    }
+
+    function clearPublicStatsCache() {
+      try { localStorage.removeItem(PUBLIC_STATS_CACHE_KEY); } catch (_) {}
+    }
+
+    async function loadStats(force = false) {
+      if (force) clearPublicStatsCache();
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem(PUBLIC_STATS_CACHE_KEY) || 'null'); } catch (_) {}
+      if (!force && cached?.data) {
+        renderPublicStats(cached.data);
+        if (Date.now() - cached.savedAt < PUBLIC_STATS_FRESH_MS) return cached.data;
+      }
+      if (publicStatsPromise) return publicStatsPromise;
+      publicStatsPromise = fetch('/api/stats', { cache: force ? 'no-store' : 'default', headers: { Accept: 'application/json' } })
+        .then(res => res.json())
+        .then(d => {
+          renderPublicStats(d);
+          try { localStorage.setItem(PUBLIC_STATS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: d })); } catch (_) {}
+          return d;
+        })
+        .catch(() => cached?.data || null)
+        .finally(() => { publicStatsPromise = null; });
+      return publicStatsPromise;
     }
 
     // Load captcha for Request Form
@@ -744,7 +769,7 @@
         showCustomDialog('success', 'রক্তের আবেদন সম্পন্ন', data.message || 'আপনার জরুরি রক্তের আবেদন সফলভাবে গ্রহণ করা হয়েছে। নিকটবর্তী ডোনারদের জানানো হচ্ছে।');
         document.getElementById('blood-request-form').reset();
         loadCaptcha();
-        loadStats();
+        loadStats(true);
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = 'জরুরি রিকোয়েস্ট সাবমিট করুন';
@@ -803,7 +828,7 @@
         closeDonorModal();
         showCustomDialog('success', 'ডোনার নিবন্ধন সফল', data.message || 'আপনার ডোনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।');
         showDonorCardModal(payload);
-        loadStats();
+        loadStats(true);
       } catch (err) {
         btn.disabled = false;
         alertBox.className = 'hidden';
