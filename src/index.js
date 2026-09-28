@@ -68,15 +68,17 @@ async function sha256Hex(message) {
     .join("");
 }
 
-const CAPTCHA_SECRET = "BRYBDPF_SECURE_HMAC_SALT_2026";
+const DEFAULT_CAPTCHA_SECRET = "";
 
-async function generateCaptcha() {
+async function generateCaptcha(env) {
   const num1 = Math.floor(Math.random() * 8) + 2;
   const num2 = Math.floor(Math.random() * 8) + 1;
   const answer = (num1 + num2).toString();
   const timestamp = Date.now().toString();
   const payload = `${answer}:${timestamp}`;
-  const sig = await sha256Hex(`${payload}:${CAPTCHA_SECRET}`);
+  const secret = env.CAPTCHA_SECRET || DEFAULT_CAPTCHA_SECRET;
+  if (!secret) throw new Error("CAPTCHA_SECRET is not configured");
+  const sig = await sha256Hex(`${payload}:${secret}`);
   const token = btoa(`${payload}:${sig}`);
   return {
     question: `${num1} + ${num2} = ?`,
@@ -84,7 +86,7 @@ async function generateCaptcha() {
   };
 }
 
-async function verifyCaptcha(token, userAnswer) {
+async function verifyCaptcha(env, token, userAnswer) {
   if (!token || !userAnswer) return false;
   try {
     const decoded = atob(token);
@@ -93,7 +95,9 @@ async function verifyCaptcha(token, userAnswer) {
     const [correctAnswer, timestamp, sig] = parts;
     const timeDiff = Date.now() - parseInt(timestamp, 10);
     if (isNaN(timeDiff) || timeDiff < 0 || timeDiff > 10 * 60 * 1000) return false;
-    const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${CAPTCHA_SECRET}`);
+    const secret = env.CAPTCHA_SECRET || DEFAULT_CAPTCHA_SECRET;
+    if (!secret) return false;
+    const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${secret}`);
     if (sig !== expectedSig) return false;
     return userAnswer.toString().trim() === correctAnswer.trim();
   } catch (e) {
@@ -215,7 +219,7 @@ export default {
       if (method === "OPTIONS") return json({ ok: true });
 
       if (path === "/api/captcha" && method === "GET") {
-        const captcha = await generateCaptcha();
+        const captcha = await generateCaptcha(env);
         return json(captcha);
       }
 
@@ -251,7 +255,7 @@ export default {
           agreed_future_donation, agreed_data_save
         } = body;
 
-        const isCaptchaValid = await verifyCaptcha(captcha_token, captcha_answer);
+        const isCaptchaValid = await verifyCaptcha(env, captcha_token, captcha_answer);
         if (!isCaptchaValid) {
           return json({ error: "ক্যাপচা যাচাই ব্যর্থ হয়েছে! অনুগ্রহ করে পুনরায় চেষ্টা করুন।" }, 400);
         }
@@ -297,7 +301,7 @@ export default {
           captcha_token, captcha_answer
         } = body;
 
-        const isCaptchaValid = await verifyCaptcha(captcha_token, captcha_answer);
+        const isCaptchaValid = await verifyCaptcha(env, captcha_token, captcha_answer);
         if (!isCaptchaValid) {
           return json({ error: "ক্যাপচা যাচাই ব্যর্থ হয়েছে! সঠিক যোগফল দিন।" }, 400);
         }
