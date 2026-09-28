@@ -417,7 +417,7 @@ export default `<!DOCTYPE html>
       const bg = document.getElementById('admin-filter-bg').value;
       const search = document.getElementById('admin-search-text').value;
 
-      const params = new URLSearchParams({ blood_group: bg, search: search });
+      const params = new URLSearchParams({ blood_group: bg || 'ALL', search });
       const res = await fetch('/api/admin/donors?' + params.toString(), {
         headers: { 'Authorization': 'Bearer ' + token }
       });

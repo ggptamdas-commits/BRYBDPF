@@ -443,7 +443,7 @@ async function handleTelegramUpdate(update, env, ctx) {
     const renderStats = async (targetChatId, targetMsgId, isCb) => {
       const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
         env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-        env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 OR is_active = 1").first(),
+        env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 AND is_active = 1").first(),
         env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
         env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first()
       ]);
@@ -490,6 +490,49 @@ async function handleTelegramUpdate(update, env, ctx) {
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
+    const renderPending = async (targetChatId, targetMsgId, isCb) => {
+      const { results } = await env.DB.prepare(
+        "SELECT id, patient_name, blood_group, units, hospital_name, district, needed_by, status FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched') ORDER BY id DESC LIMIT 8"
+      ).all();
+      const rows = results || [];
+      let text = "📋 <b>অপেক্ষমাণ রক্তের রিকোয়েস্ট</b>\n────────────────────\n";
+      if (!rows.length) text += "✅ এখন কোনো Pending বা Matched রিকোয়েস্ট নেই।";
+      else text += rows.map((r, i) => `${i + 1}. <b>#${r.id} ${escapeHtml(r.blood_group)}</b> — ${escapeHtml(r.patient_name)}\n   🏥 ${escapeHtml(r.hospital_name)}, ${escapeHtml(r.district)} | ${escapeHtml(r.status)}`).join("\n\n");
+      const kb = rows.flatMap(r => [[
+        { text: `#${r.id} ডোনার দেখুন`, callback_data: `cb:req:${r.id}:view` },
+        { text: `✅ ${r.status === 'Matched' ? 'Fulfilled' : 'Matched'}`, callback_data: `cb:req:${r.id}:${r.status === 'Matched' ? 'Fulfilled' : 'Matched'}` }
+      ]]);
+      kb.push([{ text: "🔄 রিফ্রেশ", callback_data: "cb:pending" }, { text: "🔙 মূল মেনু", callback_data: "cb:menu" }]);
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderDonationList = async (targetChatId, targetMsgId, isCb) => {
+      const { results } = await env.DB.prepare(
+        "SELECT id, name, blood_group, phone, district, is_available FROM donors ORDER BY id DESC LIMIT 10"
+      ).all();
+      const rows = results || [];
+      let text = "💉 <b>ডোনেশন মার্ক করুন</b>\nডোনার নির্বাচন করলে আজকের ডোনেশন যোগ হবে এবং তাকে সাময়িকভাবে বিশ্রামে পাঠানো হবে।";
+      const kb = rows.map(d => [{ text: `${d.name} • ${d.blood_group} • #${d.id}`, callback_data: `cb:don:${d.id}` }]);
+      kb.push([{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]);
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderDonorSearch = async (targetChatId, targetMsgId, isCb) => {
+      await env.DB.prepare("INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, data, updated_at) VALUES (?, 'donor_search', '', datetime('now'))").bind(String(targetChatId)).run();
+      const text = "🔍 <b>ডোনার সার্চ</b>\nপরের মেসেজে নাম, ফোন, এলাকা বা রক্তের গ্রুপ লিখুন। যেমন: <code>A+</code> অথবা <code>017</code>";
+      const kb = [[{ text: "🩸 গ্রুপভিত্তিক তালিকা", callback_data: "cb:groups" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderMatches = async (targetChatId, targetMsgId, requestId, isCb) => {
+      const req = await env.DB.prepare("SELECT patient_name, blood_group, district FROM blood_requests WHERE id = ?").bind(requestId).first();
+      if (!req) return tgSendOrEdit(token, targetChatId, targetMsgId, "❌ রিকোয়েস্টটি পাওয়া যায়নি।", [[{ text: "🔙 Pending তালিকা", callback_data: "cb:pending" }]], isCb);
+      const { results } = await env.DB.prepare("SELECT name, blood_group, phone, area, district, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1) ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT 8").bind(req.blood_group, req.district).all();
+      const donors = results || [];
+      const text = `🩸 <b>#${requestId} — ${escapeHtml(req.patient_name)}</b>\nপ্রয়োজন: <code>${escapeHtml(req.blood_group)}</code> | ${escapeHtml(req.district)}\n────────────────────\n` + (donors.length ? donors.map((d, i) => `${i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.phone)}\n   ${escapeHtml(d.area || '')}, ${escapeHtml(d.district || '')} | দান ${d.total_donations || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো প্রস্তুত ডোনার নেই।");
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, [[{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], isCb);
+    };
+
     if (update.callback_query) {
       const cq = update.callback_query;
       const fromId = String(cq.from?.id || "");
@@ -503,6 +546,47 @@ async function handleTelegramUpdate(update, env, ctx) {
       }
 
       await tgAnswerCallback(token, cq.id);
+
+      if (data === "cb:pending") {
+        await renderPending(chatId, messageId, true);
+        return;
+      }
+
+      if (data === "cb:mark_donation") {
+        await renderDonationList(chatId, messageId, true);
+        return;
+      }
+
+      if (data === "cb:donor_search") {
+        await renderDonorSearch(chatId, messageId, true);
+        return;
+      }
+
+      if (data.startsWith("cb:req:")) {
+        const [, , requestId, action] = data.split(":");
+        if (action === "view") {
+          await renderMatches(chatId, messageId, requestId, true);
+          return;
+        }
+        const allowed = new Set(["Matched", "Fulfilled", "Closed"]);
+        if (allowed.has(action)) {
+          await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(action, requestId).run();
+          await tgSendOrEdit(token, chatId, messageId, `✅ রিকোয়েস্ট <b>#${requestId}</b> এখন <b>${action}</b>।`, [[{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+          return;
+        }
+      }
+
+      if (data.startsWith("cb:don:")) {
+        const donorId = data.slice(7);
+        const donor = await env.DB.prepare("SELECT name, blood_group FROM donors WHERE id = ?").bind(donorId).first();
+        if (!donor) {
+          await tgSendOrEdit(token, chatId, messageId, "❌ ডোনারটি পাওয়া যায়নি।", [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+          return;
+        }
+        await env.DB.prepare("UPDATE donors SET total_donations = COALESCE(total_donations, 0) + 1, last_donation_date = date('now'), is_available = 0, updated_at = datetime('now') WHERE id = ?").bind(donorId).run();
+        await tgSendOrEdit(token, chatId, messageId, `✅ <b>${escapeHtml(donor.name)}</b> (${escapeHtml(donor.blood_group)})-এর আজকের ডোনেশন মার্ক হয়েছে।\nতাকে সাময়িকভাবে বিশ্রামে পাঠানো হয়েছে।`, [[{ text: "💉 আরেকজন মার্ক করুন", callback_data: "cb:mark_donation" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+        return;
+      }
 
       if (data === "cb:menu") {
         const text = "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল</b> 🩸\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে পরিচালনা করুন:";
@@ -523,7 +607,7 @@ async function handleTelegramUpdate(update, env, ctx) {
       if (data.startsWith("cb:grp:")) {
         const bg = data.replace("cb:grp:", "").trim();
         const { results } = await env.DB.prepare(
-          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE UPPER(TRIM(blood_group)) = UPPER(TRIM(?)) AND (is_available = 1 OR is_active = 1) ORDER BY id DESC LIMIT 10"
+          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1) ORDER BY id DESC LIMIT 10"
         ).bind(bg).all();
 
         let donorText = "";
@@ -564,6 +648,17 @@ async function handleTelegramUpdate(update, env, ctx) {
         return;
       }
 
+      const stateRow = await env.DB.prepare("SELECT state FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).first();
+      if (stateRow?.state === 'donor_search' && text && !text.startsWith('/')) {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
+        const term = text.trim().slice(0, 80);
+        const { results } = await env.DB.prepare("SELECT name, blood_group, phone, district, area, is_available FROM donors WHERE name LIKE ? OR phone LIKE ? OR district LIKE ? OR area LIKE ? OR REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') ORDER BY id DESC LIMIT 10").bind(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, term).all();
+        const rows = results || [];
+        const textOut = rows.length ? `🔍 <b>${escapeHtml(term)}</b>-এর জন্য ${rows.length} জন ডোনার:\n────────────────────\n` + rows.map((d, i) => `${i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.blood_group)}\n   ${escapeHtml(d.phone)} | ${escapeHtml(d.district || '')}, ${escapeHtml(d.area || '')}`).join("\n\n") : `⚠️ <b>${escapeHtml(term)}</b>-এর জন্য কোনো ডোনার পাওয়া যায়নি।`;
+        await tgSendMessage(token, chatId, textOut, [[{ text: "🔍 আবার সার্চ", callback_data: "cb:donor_search" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]]);
+        return;
+      }
+
       if (text === "/start" || text === "/menu" || text.includes("মেনু") || text.includes("রিফ্রেশ")) {
         const welcomeText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল প্যানেল</b> 🩸\nস্বাগতম! নিচের বাটনগুলো চেপে সহজেই রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:`;
         await tgSendMessage(token, chatId, welcomeText, getMainAdminKeyboard());
@@ -572,6 +667,21 @@ async function handleTelegramUpdate(update, env, ctx) {
 
       if (text === "/stats" || text.includes("পরিসংখ্যান")) {
         await renderStats(chatId, null, false);
+        return;
+      }
+
+      if (text.includes("পেন্ডিং")) {
+        await renderPending(chatId, null, false);
+        return;
+      }
+
+      if (text.includes("ডোনেশন")) {
+        await renderDonationList(chatId, null, false);
+        return;
+      }
+
+      if (text.includes("সার্চ") || text.includes("অ্যাকশন")) {
+        await renderDonorSearch(chatId, null, false);
         return;
       }
 
@@ -682,7 +792,7 @@ export async function onRequest(context) {
       if (path === "/api/stats" && method === "GET") {
         const [donorsRes, availRes, reqRes, distRes, pendingRes, completedRes] = await Promise.all([
           env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-          env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 OR is_active = 1").first(),
+          env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 AND is_active = 1").first(),
           env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
           env.DB.prepare("SELECT count(DISTINCT district) as count FROM donors WHERE TRIM(district) != ''").first(),
           env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
@@ -833,7 +943,7 @@ export async function onRequest(context) {
                 ELSE 3
               END) as proximity_tier
             FROM donors 
-            WHERE UPPER(TRIM(blood_group)) = UPPER(TRIM(?)) AND (is_available = 1 OR is_active = 1)
+            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1)
             ORDER BY proximity_tier ASC, id DESC LIMIT 15
           `).bind(reqDist, reqThana, reqThana, reqDist, blood_group.trim().toUpperCase()).all();
 
@@ -979,7 +1089,7 @@ export async function onRequest(context) {
         if (path === "/api/admin/data" && method === "GET") {
           const [donorsRes, availRes, reqRes, pendingRes, completedRes] = await Promise.all([
             env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-            env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 OR is_active = 1").first(),
+            env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 AND is_active = 1").first(),
             env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
             env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
             env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) = 'fulfilled'").first()
@@ -1030,7 +1140,7 @@ export async function onRequest(context) {
           let query = "SELECT * FROM donors WHERE 1=1";
           const params = [];
 
-          if (bg && bg !== "ALL") { query += " AND UPPER(TRIM(blood_group)) = UPPER(TRIM(?))"; params.push(bg); }
+          if (bg && bg !== "ALL") { query += " AND REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '')"; params.push(bg); }
           if (dist && dist !== "ALL") { query += " AND district = ?"; params.push(dist); }
           if (q) { query += " AND (name LIKE ? OR phone LIKE ? OR area LIKE ?)"; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
 
@@ -1123,7 +1233,7 @@ export async function onRequest(context) {
                 ELSE 3
               END) as proximity_tier
             FROM donors 
-            WHERE UPPER(TRIM(blood_group)) = UPPER(TRIM(?)) AND (is_available = 1 OR is_active = 1)
+            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1)
             ORDER BY proximity_tier ASC, id DESC LIMIT 15
           `).bind(reqDist, reqThana, reqThana, reqDist, reqItem.blood_group.trim().toUpperCase()).all();
 
@@ -1227,6 +1337,19 @@ export async function onRequest(context) {
         }
 
         if (path === "/api/admin/test-telegram" && method === "POST") {
+          const tokenRes = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'").first();
+          if (!tokenRes?.value) return json({ success: false, error: "টেলিগ্রাম বট টোকেন কনফিগার করা নেই।" }, 400);
+          const secretRow = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = ?").bind(TELEGRAM_WEBHOOK_SECRET_KEY).first();
+          const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET || secretRow?.value || generateRandomToken(24);
+          if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
+            await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, webhookSecret).run();
+          }
+          const webhookResponse = await fetch(`https://api.telegram.org/bot${tokenRes.value}/setWebhook`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: `${url.origin}/api/telegram/webhook`, secret_token: webhookSecret, drop_pending_updates: false, allowed_updates: ["message", "callback_query"] })
+          });
+          const webhookData = await webhookResponse.json().catch(() => ({}));
           const testRequest = {
             id: 9999,
             patient_name: "পরীক্ষামূলক রোগী",
@@ -1243,7 +1366,7 @@ export async function onRequest(context) {
             { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", area: "মেডিকেল মোড়", phone: "01711111111" }
           ];
           await sendTelegramAlert(env, testRequest, sampleDonors);
-          return json({ success: true, message: "টেলিগ্রাম টেস্ট মেসেজ পাঠানো হয়েছে!" });
+          return json({ success: true, webhook_configured: webhookData.ok === true, message: webhookData.ok === true ? "টেস্ট মেসেজ পাঠানো হয়েছে এবং বটের বাটন/ওয়েবহুক সক্রিয় করা হয়েছে।" : "টেস্ট মেসেজ পাঠানো হয়েছে, কিন্তু ওয়েবহুক সেটআপ ব্যর্থ হয়েছে। নতুন বট টোকেন দিয়ে আবার চেষ্টা করুন।" });
         }
       }
 
