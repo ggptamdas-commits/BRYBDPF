@@ -618,14 +618,14 @@
     }
 
     function copyDonationNumber() {
-      const number = '+880 1921-069642';
+      const number = '01921069642';
       const done = () => showCustomDialog('success', 'নম্বর কপি হয়েছে', 'বিকাশ, নগদ বা রকেট Personal-এ নম্বরটি ব্যবহার করে মানবসেবায় পাশে থাকুন।');
       if (navigator.clipboard?.writeText) navigator.clipboard.writeText(number).then(done).catch(() => showCustomDialog('error', 'কপি করা যায়নি', 'নম্বরটি হাতে ধরে কপি করে আপনার পছন্দের অ্যাপে ব্যবহার করুন।'));
       else showCustomDialog('info', 'ডোনেশন নম্বর', number + '\nরবিউল ইসলাম');
     }
 
     function openDonationDialog() {
-      showCustomDialog('info', 'মানবসেবায় আপনার সহযোগিতা', 'এক কাপ চা বা একটি সিগারেটের সমপরিমাণ অর্থও আমাদের রক্তদান কার্যক্রমে সহায়তা করতে পারে।\n\nবিকাশ, নগদ ও Rocket Personal\nনম্বর: +880 1921-069642\nনাম: রবিউল ইসলাম');
+      showCustomDialog('info', 'মানবসেবায় আপনার সহযোগিতা', 'এক কাপ চা বা একটি সিগারেটের সমপরিমাণ অর্থও আমাদের রক্তদান কার্যক্রমে সহায়তা করতে পারে।\n\nবিকাশ, নগদ ও Rocket Personal\nনম্বর: 01921069642\nনাম: রবিউল ইসলাম');
       const button = document.querySelector('#custom-dialog button');
       if (button) { button.textContent = 'নম্বর কপি করুন'; button.onclick = () => { copyDonationNumber(); }; }
     }
