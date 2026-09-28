@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "dev.pages.brybdpf.twa",
+      "sha256_cert_fingerprints": [
+        "C7:F1:30:DF:E7:63:1A:E6:71:D7:7D:77:76:1A:13:A9:C4:8A:2F:AF:95:8D:D2:03:D4:FC:D8:F4:9C:A4:FA:1F"
+      ]
+    }
+  }
+]
