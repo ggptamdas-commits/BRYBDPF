@@ -488,6 +488,7 @@
             </div>
             <div class="min-w-0 space-y-0.5 sm:space-y-1 text-[8px] sm:text-sm leading-tight">
               <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">নাম</span><b>:</b> <b id="card-donor-name" class="ml-1 min-w-0 truncate text-slate-900">রক্তদাতা</b></div>
+              <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">রক্তের গ্রুপ</span><b>:</b> <b id="card-donor-bg" class="ml-1 min-w-0 truncate text-crimson-700">—</b></div>
               <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">ফোন</span><b>:</b> <span id="card-donor-phone" class="ml-1 min-w-0 truncate font-semibold">—</span></div>
               <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">এলাকা</span><b>:</b> <span id="card-donor-location" class="ml-1 min-w-0 truncate">রংপুর</span></div>
               <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">বয়স</span><b>:</b> <span id="card-donor-age" class="ml-1 min-w-0 truncate">—</span></div>
@@ -931,7 +932,7 @@
       registeredDonorData = donor;
       const setCardText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
       setCardText('card-donor-name', donor.name || 'রক্তদাতা');
-      setCardText('card-donor-bg', donor.blood_group || 'O+');
+      setCardText('card-donor-bg', donor.blood_group || '—');
       setCardText('card-donor-phone', donor.phone || '—');
       setCardText('card-donor-age', donor.age || '—');
       setCardText('card-donor-location', (donor.area ? donor.area + ', ' : '') + (donor.district || 'রংপুর'));
@@ -1026,7 +1027,7 @@
 
       const d = registeredDonorData;
       const labelX = 350, valueX = 560;
-      const rows = [['Name', d.name || 'রক্তদাতা'], ['Blood Group', d.blood_group || 'O+'], ['Donor ID', document.getElementById('card-donor-id').textContent], ['Age', d.age || '—'], ['Contact', d.phone || '—']];
+      const rows = [['Name', d.name || 'রক্তদাতা'], ['Blood Group', d.blood_group || '—'], ['Donor ID', document.getElementById('card-donor-id').textContent], ['Age', d.age || '—'], ['Contact', d.phone || '—']];
       rows.forEach((row, i) => { const y = 225 + i * 52; ctx.fillStyle = '#334155'; ctx.font = '23px Arial'; ctx.fillText(row[0], labelX, y); ctx.fillText(':', 515, y); ctx.fillStyle = i === 1 ? '#be123c' : '#111827'; ctx.font = i === 0 ? 'bold 26px Arial' : (i === 1 ? 'bold 32px Arial' : '24px Arial'); ctx.fillText(String(row[1]), valueX, y); });
       ctx.fillStyle = '#334155'; ctx.font = '22px Arial'; ctx.fillText('Location', labelX, 495); ctx.fillText(':', 515, 495); ctx.fillText((d.area ? d.area + ', ' : '') + (d.district || 'রংপুর'), valueX, 495);
 
