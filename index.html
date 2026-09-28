@@ -575,7 +575,8 @@
 
   <!-- Reusable custom notification dialog -->
   <div id="custom-dialog" class="hidden fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="custom-dialog-title">
-    <div class="w-full max-w-sm rounded-3xl bg-white shadow-2xl border border-white/70 overflow-hidden text-center">
+    <div class="relative w-full max-w-sm rounded-3xl bg-white shadow-2xl border border-white/70 overflow-hidden text-center">
+      <button type="button" onclick="closeCustomDialog()" aria-label="পপআপ বন্ধ করুন" class="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none text-slate-400 transition hover:bg-rose-50 hover:text-crimson-700 focus:outline-none focus:ring-2 focus:ring-crimson-400">×</button>
       <div id="custom-dialog-icon" class="mx-auto mt-7 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"></div>
       <div class="px-6 pt-4 pb-6">
         <h3 id="custom-dialog-title" class="text-xl font-bold text-slate-900"></h3>
