@@ -303,9 +303,9 @@
               <div class="pt-2 border-t border-gray-100">
                 <button type="button" onclick="setupTelegramWebhook()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-sm transition flex items-center justify-center gap-2">
                   <i class="fa-solid fa-plug"></i>
-                  <span>টেলিগ্রাম ওয়েবহুক অটো-কানেক্ট করুন</span>
+                  <span>ওয়েবহুক ও বাটন অটো-কানেক্ট করুন</span>
                 </button>
-                <p class="text-xs text-gray-400 text-center mt-1">Cloudflare Edge-এর সাথে টেলিগ্রাম বটের দ্বি-মুখী যোগাযোগ সক্রিয় করে</p>
+                <p class="text-xs text-gray-400 text-center mt-1">টেস্ট মেসেজ পাঠালেও ওয়েবহুক/বাটন স্বয়ংক্রিয়ভাবে sync হবে</p>
               </div>
             </form>
           </div>
@@ -675,7 +675,8 @@
       tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-xl text-red-500"></i></td></tr>';
 
       try {
-        const res = await fetch(`/api/admin/donors?blood_group=${bg}&search=${encodeURIComponent(search)}`);
+        const params = new URLSearchParams({ blood_group: bg || 'ALL', search });
+        const res = await fetch('/api/admin/donors?' + params.toString());
         const data = await res.json();
 
         if (!data.donors || data.donors.length === 0) {
@@ -892,7 +893,7 @@
         const res = await fetch('/api/admin/test-telegram', { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-          showToast(data.message || 'টেস্ট সফল হয়েছে!', 'success');
+          showToast(data.message || 'টেস্ট সফল হয়েছে!', data.webhook_configured === false ? 'error' : 'success');
         } else {
           showToast(data.error || 'টেস্ট মেসেজ পাঠানো যায়নি।', 'error');
         }
