@@ -301,11 +301,12 @@ export default `<!DOCTYPE html>
 
         const overview = await dataRes.json();
         document.getElementById('dashboard-view').classList.remove('hidden');
-        document.getElementById('admin-display-email').textContent = overview.admin_email;
-        document.getElementById('m-total-donors').textContent = overview.total_donors;
-        document.getElementById('m-active-donors').textContent = overview.active_donors;
-        document.getElementById('m-total-requests').textContent = overview.total_requests;
-        document.getElementById('m-pending-requests').textContent = overview.pending_requests;
+        const stats = overview.stats || overview;
+        document.getElementById('admin-display-email').textContent = overview.admin_email || 'admin';
+        document.getElementById('m-total-donors').textContent = stats.total_donors ?? 0;
+        document.getElementById('m-active-donors').textContent = stats.active_donors ?? stats.available_donors ?? 0;
+        document.getElementById('m-total-requests').textContent = stats.total_requests ?? 0;
+        document.getElementById('m-pending-requests').textContent = stats.pending_requests ?? 0;
 
         fetchAdminDonors();
         fetchAdminRequests();
@@ -622,7 +623,7 @@ export default `<!DOCTYPE html>
         current_password: document.getElementById('pwd-current').value,
         new_password: document.getElementById('pwd-new').value
       };
-      const res = await fetch('/api/admin/settings', {
+      const res = await fetch('/api/admin/change-password', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

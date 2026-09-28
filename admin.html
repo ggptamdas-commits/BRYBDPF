@@ -644,7 +644,7 @@
     async function updateRequestStatus(id, newStatus) {
       try {
         const res = await fetch(`/api/admin/requests/${id}/status`, {
-          method: 'PATCH',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })
         });

@@ -72,15 +72,17 @@ async function sha256Hex(message) {
     .join("");
 }
 
-const CAPTCHA_SECRET = "BRYBDPF_SECURE_HMAC_SALT_2026";
+const DEFAULT_CAPTCHA_SECRET = "";
 
-async function generateCaptcha() {
+async function generateCaptcha(env) {
   const num1 = Math.floor(Math.random() * 8) + 2;
   const num2 = Math.floor(Math.random() * 8) + 1;
   const answer = (num1 + num2).toString();
   const timestamp = Date.now().toString();
   const payload = `${answer}:${timestamp}`;
-  const sig = await sha256Hex(`${payload}:${CAPTCHA_SECRET}`);
+  const secret = env.CAPTCHA_SECRET || DEFAULT_CAPTCHA_SECRET;
+  if (!secret) throw new Error('CAPTCHA_SECRET is not configured');
+  const sig = await sha256Hex(`${payload}:${secret}`);
   const token = btoa(`${payload}:${sig}`);
   return {
     question: `${num1} + ${num2} = ?`,
@@ -112,7 +114,7 @@ function isValidPhone(phone) {
   return /^01[3-9]\d{8}$/.test(norm);
 }
 
-async function verifyCaptcha(token, userAnswer) {
+async function verifyCaptcha(env, token, userAnswer) {
   if (!token || !userAnswer) return false;
   try {
     const normAns = normalizeDigits(userAnswer).trim();
@@ -128,7 +130,9 @@ async function verifyCaptcha(token, userAnswer) {
       const [correctAnswer, timestamp, sig] = parts;
       const timeDiff = Date.now() - parseInt(timestamp, 10);
       if (isNaN(timeDiff) || timeDiff < 0 || timeDiff > 10 * 60 * 1000) return false;
-      const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${CAPTCHA_SECRET}`);
+      const secret = env.CAPTCHA_SECRET || DEFAULT_CAPTCHA_SECRET;
+    if (!secret) return false;
+    const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${secret}`);
       if (sig !== expectedSig) return false;
       return normAns === correctAnswer.trim();
     }
@@ -293,15 +297,22 @@ async function getAuthenticatedAdmin(request, env) {
       }
     } catch(e) {}
 
-    const fallbackUser = await env.DB.prepare("SELECT * FROM admins LIMIT 1").first();
-    return fallbackUser || null;
+    return null;
   } catch (err) {
     console.error("Auth admin error:", err);
     return null;
   }
 }
 
-const TELEGRAM_WEBHOOK_SECRET = "BRYBDPF_TG_SECURE_TOKEN_2026";
+const TELEGRAM_WEBHOOK_SECRET_KEY = "telegram_webhook_secret";
+
+async function isRateLimited(env, key, limit, windowMinutes) {
+  const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+  const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM rate_limits WHERE key = ? AND created_at > ?").bind(key, cutoff).first();
+  if ((row?.count || 0) >= limit) return true;
+  await env.DB.prepare("INSERT INTO rate_limits (key, created_at) VALUES (?, datetime('now'))").bind(key).run();
+  return false;
+}
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -619,6 +630,10 @@ export async function onRequest(context) {
 
       if (path === "/api/telegram/webhook" && method === "POST") {
         try {
+          const secretRow = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = ?").bind(TELEGRAM_WEBHOOK_SECRET_KEY).first();
+          const expectedSecret = env.TELEGRAM_WEBHOOK_SECRET || secretRow?.value || "";
+          const suppliedSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+          if (!expectedSecret || suppliedSecret !== expectedSecret) return json({ ok: false }, 403);
           const update = await request.json();
           ctx.waitUntil(handleTelegramUpdate(update, env, ctx));
           return json({ ok: true });
@@ -640,11 +655,17 @@ export async function onRequest(context) {
         }
 
         const token = tokenRes.value;
+        let secretRow = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = ?").bind(TELEGRAM_WEBHOOK_SECRET_KEY).first();
+        const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET || secretRow?.value || generateRandomToken(24);
+        if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
+          await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, webhookSecret).run();
+        }
         const tgRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             url: webhookUrl,
+            secret_token: webhookSecret,
             drop_pending_updates: false,
             allowed_updates: ["message", "callback_query"]
           })
@@ -654,15 +675,18 @@ export async function onRequest(context) {
       }
 
       if (path === "/api/captcha" && method === "GET") {
-        const captcha = await generateCaptcha();
+        const captcha = await generateCaptcha(env);
         return json(captcha);
       }
 
       if (path === "/api/stats" && method === "GET") {
-        const [donorsRes, availRes, reqRes] = await Promise.all([
+        const [donorsRes, availRes, reqRes, distRes, pendingRes, completedRes] = await Promise.all([
           env.DB.prepare("SELECT count(*) as count FROM donors").first(),
           env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 OR is_active = 1").first(),
-          env.DB.prepare("SELECT count(*) as count FROM blood_requests").first()
+          env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
+          env.DB.prepare("SELECT count(DISTINCT district) as count FROM donors WHERE TRIM(district) != ''").first(),
+          env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
+          env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) = 'fulfilled'").first()
         ]);
         const total_donors = donorsRes ? donorsRes.count : 0;
         const available_donors = availRes ? availRes.count : 0;
@@ -675,11 +699,11 @@ export async function onRequest(context) {
           availableDonors: available_donors,
           total_requests,
           totalRequests: total_requests,
-          districts_count: 8,
-          districtsCount: 8,
-          completed_requests: Math.max(0, total_requests - 2),
-          pending_requests: Math.min(total_requests, 2)
-        });
+          districts_count: distRes?.count || 0,
+          districtsCount: distRes?.count || 0,
+          completed_requests: completedRes?.count || 0,
+          pending_requests: pendingRes?.count || 0
+        }, 200, { 'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=120' });
       }
 
       if (path === "/api/donors/search") {
@@ -691,6 +715,7 @@ export async function onRequest(context) {
 
       if (path === "/api/donors/register" && method === "POST") {
         try {
+          if (await isRateLimited(env, `donor-register:${ip}`, 5, 60)) return json({ error: "অনেকবার চেষ্টা করা হয়েছে। এক ঘণ্টা পরে আবার চেষ্টা করুন।" }, 429);
           const body = await request.json();
           const {
             name, blood_group, phone, district, thana, area, age, gender,
@@ -698,7 +723,7 @@ export async function onRequest(context) {
             agreed_future_donation, agreed_data_save
           } = body;
 
-          if (!captcha_token || !captcha_answer || !(await verifyCaptcha(captcha_token, captcha_answer))) {
+          if (!captcha_token || !captcha_answer || !(await verifyCaptcha(env, captcha_token, captcha_answer))) {
             return json({ error: "ক্যাপচা যাচাই ব্যর্থ হয়েছে! অনুগ্রহ করে সঠিক উত্তর দিন।" }, 400);
           }
 
@@ -724,11 +749,11 @@ export async function onRequest(context) {
           `);
 
           await stmt.bind(
-            name.trim(),
+            name.trim().slice(0, 120),
             blood_group.trim().toUpperCase(),
             cleanPhone,
-            district.trim(),
-            (thana || "").trim(),
+            district.trim().slice(0, 120),
+            (thana || "").trim().slice(0, 120),
             (area || "").trim(),
             parseInt(age, 10) || 25,
             gender || "Male",
@@ -749,6 +774,7 @@ export async function onRequest(context) {
 
       if (path === "/api/requests/create" && method === "POST") {
         try {
+          if (await isRateLimited(env, `request-create:${ip}`, 10, 60)) return json({ error: "অনেকবার রিকোয়েস্ট করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" }, 429);
           const body = await request.json();
           const {
             patient_name, blood_group, units, district, thana, needed_by,
@@ -757,7 +783,7 @@ export async function onRequest(context) {
             captcha_token, captcha_answer, agreed_future_donation, agreed_data_save
           } = body;
 
-          if (!captcha_token || !captcha_answer || !(await verifyCaptcha(captcha_token, captcha_answer))) {
+          if (!captcha_token || !captcha_answer || !(await verifyCaptcha(env, captcha_token, captcha_answer))) {
             return json({ error: "ক্যাপচা যাচাই ব্যর্থ হয়েছে! অনুগ্রহ করে সঠিক উত্তর দিন।" }, 400);
           }
 
@@ -846,9 +872,9 @@ export async function onRequest(context) {
         if (count > 0) {
           return json({ error: "অ্যাডমিন ইতিমধ্যে কনফিগার করা আছে। অনুগ্রহ করে লগইন করুন।" }, 400);
         }
-        const { email, password } = await request.json();
-        if (!email || !password || password.length < 6) {
-          return json({ error: "সঠিক ইমেইল ও কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।" }, 400);
+        const { email, password, telegram_token, telegram_uids } = await request.json();
+        if (!email || !password || password.length < 8) {
+          return json({ error: "সঠিক ইমেইল ও কমপক্ষে ৮ অক্ষরের পাসওয়ার্ড দিন।" }, 400);
         }
         const salt = crypto.randomUUID().replace(/-/g, "");
         const hash = await hashPassword(password, salt);
@@ -861,6 +887,11 @@ export async function onRequest(context) {
         await env.DB.prepare(
           "INSERT INTO sessions (token, admin_email, expires_at) VALUES (?, ?, ?)"
         ).bind(token, email.trim().toLowerCase(), expiresAt).run();
+        await env.DB.batch([
+          env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_bot_token', ?)").bind(String(telegram_token || '').trim()),
+          env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES ('telegram_admin_uids', ?)").bind(String(telegram_uids || '').trim()),
+          env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value) VALUES (?, ?)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, env.TELEGRAM_WEBHOOK_SECRET || generateRandomToken(24))
+        ]);
 
         return json({ success: true, token });
       }
@@ -904,10 +935,6 @@ export async function onRequest(context) {
           } catch (_) {}
         }
 
-        if (!isMatch && (user.password || user.password_hash)) {
-          if (password === user.password || password === user.password_hash) isMatch = true;
-        }
-
         if (!isMatch) {
           return json({ error: "ইমেইল বা পাসওয়ার্ড সঠিক নয়।" }, 401);
         }
@@ -930,7 +957,7 @@ export async function onRequest(context) {
           success: true,
           token,
           user: { id: user.id, username: user.email || user.username, email: user.email, role: user.role || "superadmin" }
-        });
+        }, 200, { 'Set-Cookie': `brybdpf_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=604800` });
       }
 
       if (path === "/api/admin/logout" && method === "POST") {
@@ -940,7 +967,7 @@ export async function onRequest(context) {
           await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
           await env.DB.prepare("DELETE FROM admin_sessions WHERE token = ?").bind(token).run();
         }
-        return json({ success: true });
+        return json({ success: true }, 200, { 'Set-Cookie': 'brybdpf_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0' });
       }
 
       if (path.startsWith("/api/admin/")) {
@@ -950,9 +977,12 @@ export async function onRequest(context) {
         }
 
         if (path === "/api/admin/data" && method === "GET") {
-          const [donorsRes, reqRes] = await Promise.all([
+          const [donorsRes, availRes, reqRes, pendingRes, completedRes] = await Promise.all([
             env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-            env.DB.prepare("SELECT count(*) as count FROM blood_requests").first()
+            env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 OR is_active = 1").first(),
+            env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
+            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
+            env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) = 'fulfilled'").first()
           ]);
           const { results: recentRequests } = await env.DB.prepare(
             "SELECT * FROM blood_requests ORDER BY id DESC LIMIT 10"
@@ -962,18 +992,26 @@ export async function onRequest(context) {
           ).all();
 
           const total_donors = donorsRes ? donorsRes.count : 0;
+          const active_donors = availRes ? availRes.count : 0;
           const total_requests = reqRes ? reqRes.count : 0;
+          const pending_requests = pendingRes ? pendingRes.count : 0;
+          const completed_requests = completedRes ? completedRes.count : 0;
 
           return json({
+            admin_email: admin.admin_email || admin.email || '',
+            total_donors,
+            active_donors,
+            total_requests,
+            pending_requests,
             stats: {
               total_donors,
               totalDonors: total_donors,
-              available_donors: total_donors,
-              availableDonors: total_donors,
+              available_donors: active_donors,
+              availableDonors: active_donors,
               total_requests,
               totalRequests: total_requests,
-              completed_requests: Math.max(0, total_requests - 2),
-              pending_requests: Math.min(total_requests, 2)
+              completed_requests,
+              pending_requests
             },
             recentRequests: recentRequests || [],
             recentDonors: recentDonors || []
@@ -981,8 +1019,8 @@ export async function onRequest(context) {
         }
 
         if (path === "/api/admin/donors" && method === "GET") {
-          const page = parseInt(url.searchParams.get("page") || "1", 10);
-          const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+          const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
+          const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "20", 10) || 20));
           const offset = (page - 1) * limit;
 
           const bg = url.searchParams.get("blood_group");
@@ -992,7 +1030,7 @@ export async function onRequest(context) {
           let query = "SELECT * FROM donors WHERE 1=1";
           const params = [];
 
-          if (bg && bg !== "ALL") { query += " AND blood_group = ?"; params.push(bg.toUpperCase()); }
+          if (bg && bg !== "ALL") { query += " AND UPPER(TRIM(blood_group)) = UPPER(TRIM(?))"; params.push(bg); }
           if (dist && dist !== "ALL") { query += " AND district = ?"; params.push(dist); }
           if (q) { query += " AND (name LIKE ? OR phone LIKE ? OR area LIKE ?)"; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
 
@@ -1032,8 +1070,8 @@ export async function onRequest(context) {
         }
 
         if (path === "/api/admin/requests" && method === "GET") {
-          const page = parseInt(url.searchParams.get("page") || "1", 10);
-          const limit = parseInt(url.searchParams.get("limit") || "10", 10);
+          const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
+          const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10) || 10));
           const offset = (page - 1) * limit;
 
           const days = parseInt(url.searchParams.get("days") || "0", 10);
@@ -1095,27 +1133,36 @@ export async function onRequest(context) {
         if (path.startsWith("/api/admin/requests/") && path.endsWith("/status") && method === "POST") {
           const reqId = path.split("/")[4];
           const { status } = await request.json();
+          const allowedStatuses = new Set(['Pending', 'Matched', 'Fulfilled', 'Closed']);
+          if (!allowedStatuses.has(status)) return json({ error: 'অবৈধ স্ট্যাটাস' }, 400);
 
           await env.DB.prepare(
-            "UPDATE blood_requests SET status = ?, created_at = created_at WHERE id = ?"
+            "UPDATE blood_requests SET status = ? WHERE id = ?"
           ).bind(status, reqId).run();
 
           return json({ success: true, status });
         }
 
         if (path === "/api/admin/settings" && method === "GET") {
-          const { results: settings } = await env.DB.prepare("SELECT key, value FROM admin_settings").all();
+          const { results: settings } = await env.DB.prepare("SELECT key, value FROM admin_settings WHERE key IN ('telegram_bot_token', 'telegram_admin_uids')").all();
           const settingsMap = {};
-          for (const s of (settings || [])) {
-            settingsMap[s.key] = s.value;
+          for (const item of (settings || [])) {
+            if (item.key === 'telegram_bot_token') {
+              const value = String(item.value || '');
+              settingsMap.telegram_bot_token_masked = value ? `${value.slice(0, 6)}…${value.slice(-4)}` : '';
+            } else {
+              settingsMap[item.key] = item.value;
+            }
           }
           return json(settingsMap);
         }
 
         if (path === "/api/admin/settings" && method === "POST") {
           const data = await request.json();
+          const allowedKeys = new Set(['telegram_bot_token', 'telegram_admin_uids']);
           for (const [key, value] of Object.entries(data)) {
-            const existing = await env.DB.prepare("SELECT id FROM admin_settings WHERE key = ?").bind(key).first();
+            if (!allowedKeys.has(key)) continue;
+            const existing = await env.DB.prepare("SELECT key FROM admin_settings WHERE key = ?").bind(key).first();
             if (existing) {
               await env.DB.prepare("UPDATE admin_settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?").bind(String(value || ""), key).run();
             } else {
@@ -1127,16 +1174,22 @@ export async function onRequest(context) {
             try {
               const host = url.origin;
               const webhookUrl = `${host}/api/telegram/webhook`;
+              const secretRow = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = ?").bind(TELEGRAM_WEBHOOK_SECRET_KEY).first();
+              const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET || secretRow?.value || generateRandomToken(24);
+              if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
+                await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, webhookSecret).run();
+              }
               await fetch(`https://api.telegram.org/bot${data.telegram_bot_token}/setWebhook`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   url: webhookUrl,
+                  secret_token: webhookSecret,
                   drop_pending_updates: false,
                   allowed_updates: ["message", "callback_query"]
                 })
               });
-            } catch (e) {}
+            } catch (e) { console.error('Telegram webhook setup failed', e); }
           }
 
           return json({ success: true, message: "সেটিংস সংরক্ষিত হয়েছে!" });
@@ -1144,8 +1197,8 @@ export async function onRequest(context) {
 
         if (path === "/api/admin/change-password" && method === "POST") {
           const { current_password, new_password } = await request.json();
-          if (!new_password || new_password.length < 6) {
-            return json({ error: "কমপক্ষে ৬ অক্ষরের নতুন পাসওয়ার্ড দিন।" }, 400);
+          if (!current_password || !new_password || new_password.length < 8) {
+            return json({ error: "কমপক্ষে ৮ অক্ষরের নতুন পাসওয়ার্ড দিন।" }, 400);
           }
 
           const user = await env.DB.prepare("SELECT * FROM admins WHERE id = ?").bind(admin.id).first();

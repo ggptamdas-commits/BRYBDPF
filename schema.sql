@@ -8,11 +8,13 @@ CREATE TABLE IF NOT EXISTS donors (
   phone TEXT NOT NULL UNIQUE,
   district TEXT NOT NULL,
   area TEXT NOT NULL,
+  thana TEXT NOT NULL DEFAULT '',
   age INTEGER NOT NULL,
   gender TEXT NOT NULL,
   last_donation_date TEXT,
   total_donations INTEGER DEFAULT 0,
   is_available INTEGER DEFAULT 1,
+  is_active INTEGER DEFAULT 1,
   agreed_future_donation INTEGER DEFAULT 1,
   agreed_data_save INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
@@ -23,6 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_donors_bg ON donors(blood_group);
 CREATE INDEX IF NOT EXISTS idx_donors_dist ON donors(district);
 CREATE INDEX IF NOT EXISTS idx_donors_avail ON donors(is_available);
 CREATE INDEX IF NOT EXISTS idx_donors_query ON donors(blood_group, district, is_available);
+CREATE INDEX IF NOT EXISTS idx_donors_bg_active ON donors(blood_group, is_available, is_active);
 
 CREATE TABLE IF NOT EXISTS blood_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
