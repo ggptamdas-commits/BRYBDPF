@@ -312,7 +312,7 @@
           <div class="flex items-center gap-2">
             <span class="text-xs font-semibold text-slate-600">রোবট যাচাই (ক্যাপচা):</span>
             <span id="captcha-question" class="px-3 py-1 bg-white font-mono font-bold text-slate-800 rounded-lg border border-slate-200 shadow-sm text-sm">লোড হচ্ছে...</span>
-            <button type="button" onclick="loadCaptcha()" class="text-xs text-crimson-600 hover:underline p-1">নতুন কোড</button>
+            <button type="button" onclick="loadCaptcha(true)" class="text-xs text-crimson-600 hover:underline p-1">নতুন কোড</button>
           </div>
           <div class="w-full sm:w-44">
             <input type="hidden" id="captcha-token">
@@ -434,7 +434,7 @@
         <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
           <div class="flex items-center justify-between mb-1.5">
             <span class="text-xs font-semibold text-slate-700">রোবট যাচাই (ক্যাপচা):</span>
-            <button type="button" onclick="loadDonorCaptcha()" class="text-xs text-crimson-600 hover:underline">নতুন সংখ্যা</button>
+            <button type="button" onclick="loadDonorCaptcha(true)" class="text-xs text-crimson-600 hover:underline">নতুন সংখ্যা</button>
           </div>
           <div class="flex items-center gap-3">
             <span id="donor-captcha-question" class="text-sm font-bold text-slate-900 font-mono bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs">৫ + ৩ = ?</span>
@@ -659,31 +659,34 @@
       return publicStatsPromise;
     }
 
-    // Load captcha for Request Form
-    async function loadCaptcha() {
-      try {
-        const res = await fetch('/api/captcha');
-        const data = await res.json();
-        document.getElementById('captcha-question').textContent = data.question;
-        document.getElementById('captcha-token').value = data.token;
-        document.getElementById('captcha-answer').value = '';
-      } catch (e) {
-        document.getElementById('captcha-question').textContent = '৩ + ৪ = ?';
+    const captchaInflight = new Map();
+    const captchaCache = new Map();
+    async function loadCaptchaFor(formKey, questionId, tokenId, answerId, fallback, force = false) {
+      const cached = captchaCache.get(formKey);
+      if (!force && cached && Date.now() - cached.savedAt < 7 * 60 * 1000) {
+        document.getElementById(questionId).textContent = cached.data.question;
+        document.getElementById(tokenId).value = cached.data.token;
+        document.getElementById(answerId).value = '';
+        return cached.data;
       }
+      if (captchaInflight.has(formKey) && !force) return captchaInflight.get(formKey);
+      const promise = fetch('/api/captcha', { headers: { Accept: 'application/json' } })
+        .then(async res => { if (!res.ok) throw new Error(`captcha-${res.status}`); return res.json(); })
+        .then(data => {
+          captchaCache.set(formKey, { savedAt: Date.now(), data });
+          document.getElementById(questionId).textContent = data.question;
+          document.getElementById(tokenId).value = data.token;
+          document.getElementById(answerId).value = '';
+          return data;
+        })
+        .catch(() => { document.getElementById(questionId).textContent = fallback; return null; })
+        .finally(() => captchaInflight.delete(formKey));
+      captchaInflight.set(formKey, promise);
+      return promise;
     }
-
-    // Load captcha for Donor Registration Form
-    async function loadDonorCaptcha() {
-      try {
-        const res = await fetch('/api/captcha');
-        const data = await res.json();
-        document.getElementById('donor-captcha-question').textContent = data.question;
-        document.getElementById('donor-captcha-token').value = data.token;
-        document.getElementById('donor-captcha-answer').value = '';
-      } catch (e) {
-        document.getElementById('donor-captcha-question').textContent = '৫ + ৩ = ?';
-      }
-    }
+    // A user can explicitly request a new challenge; normal opens reuse a valid one.
+    function loadCaptcha(force = false) { return loadCaptchaFor('request', 'captcha-question', 'captcha-token', 'captcha-answer', '৩ + ৪ = ?', force); }
+    function loadDonorCaptcha(force = false) { return loadCaptchaFor('donor', 'donor-captcha-question', 'donor-captcha-token', 'donor-captcha-answer', '৫ + ৩ = ?', force); }
 
     function openDonorModal() {
       document.getElementById('donor-modal').classList.remove('hidden');
@@ -755,21 +758,21 @@
         if (!res.ok) {
           showRequestResponse(res, data);
           alertBox.className = 'hidden';
-          loadCaptcha();
+          loadCaptcha(true);
           return;
         }
 
         alertBox.className = 'hidden';
         showCustomDialog('success', 'রক্তের আবেদন সম্পন্ন', data.message || 'আপনার জরুরি রক্তের আবেদন সফলভাবে গ্রহণ করা হয়েছে। নিকটবর্তী ডোনারদের জানানো হচ্ছে।');
         document.getElementById('blood-request-form').reset();
-        loadCaptcha();
+        loadCaptcha(true);
         loadStats(true);
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = 'জরুরি রিকোয়েস্ট সাবমিট করুন';
         alertBox.className = 'hidden';
         showCustomDialog('warning', 'আবার চেষ্টা করুন', 'রিকোয়েস্টটি এখন সম্পন্ন করা যায়নি। আপনার তথ্য হারায়নি—কিছুক্ষণ পর আবার চেষ্টা করুন।');
-        loadCaptcha();
+        loadCaptcha(true);
       }
     }
 
@@ -840,7 +843,7 @@
         console.warn('Donor registration retried:', err);
         btn.disabled = false;
         alertBox.className = 'hidden';
-        loadDonorCaptcha();
+        loadDonorCaptcha(true);
         showCustomDialog('warning', 'আবার চেষ্টা করুন', 'সংযোগ সাময়িকভাবে ধীর ছিল। আপনার তথ্য হারায়নি—একটু পর আবার চেষ্টা করুন।');
         return;
       }
@@ -852,7 +855,7 @@
         } catch (_) {
           showCustomDialog('warning', 'তথ্য যাচাই করুন', data.error || 'দেওয়া তথ্যগুলো আবার যাচাই করে চেষ্টা করুন।');
         }
-        loadDonorCaptcha();
+        loadDonorCaptcha(true);
         return;
       }
       closeDonorModal();

@@ -191,6 +191,14 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
 
     if (!token || !adminUidsStr) return;
 
+    // Telegram may retry webhook/workerd executions. Claim each request once so one
+    // blood request cannot fan out duplicate alerts to every admin.
+    if (requestData?.id) {
+      await ensureTelegramTables(env);
+      const claim = await env.DB.prepare("INSERT OR IGNORE INTO telegram_alert_claims (request_id) VALUES (?)").bind(requestData.id).run();
+      if (!(claim?.meta?.changes > 0)) return;
+    }
+
     const uids = adminUidsStr.split(",").map(u => u.trim()).filter(Boolean);
     if (uids.length === 0) return;
 
@@ -335,12 +343,27 @@ async function getAuthenticatedAdmin(request, env) {
 }
 
 const TELEGRAM_WEBHOOK_SECRET_KEY = "telegram_webhook_secret";
+let telegramTablesReady = null;
+async function ensureTelegramTables(env) {
+  if (!telegramTablesReady) {
+    telegramTablesReady = Promise.all([
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS bot_admin_states (admin_uid TEXT PRIMARY KEY, state TEXT, data TEXT, updated_at TEXT DEFAULT (datetime('now')))").run(),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_update_receipts (update_id INTEGER PRIMARY KEY, received_at TEXT DEFAULT (datetime('now')))").run(),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_alert_claims (request_id INTEGER PRIMARY KEY, claimed_at TEXT DEFAULT (datetime('now')))").run()
+    ]).catch(error => { telegramTablesReady = null; throw error; });
+  }
+  return telegramTablesReady;
+}
 
 async function isRateLimited(env, key, limit, windowMinutes) {
   const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
   const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM rate_limits WHERE key = ? AND created_at > ?").bind(key, cutoff).first();
   if ((row?.count || 0) >= limit) return true;
   await env.DB.prepare("INSERT INTO rate_limits (key, created_at) VALUES (?, datetime('now'))").bind(key).run();
+  // Keep the limiter table bounded without adding a scheduled job or affecting normal requests.
+  if (Math.random() < 0.01) {
+    await env.DB.prepare("DELETE FROM rate_limits WHERE created_at < datetime('now', '-2 hours')").run().catch(() => {});
+  }
   return false;
 }
 
@@ -450,9 +473,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
   try {
     let adminUidsStr = "";
 
-    await env.DB.prepare(
-      "CREATE TABLE IF NOT EXISTS bot_admin_states (admin_uid TEXT PRIMARY KEY, state TEXT, data TEXT, updated_at TEXT DEFAULT (datetime('now')))"
-    ).run();
+    await ensureTelegramTables(env);
 
     const { results: settings } = await env.DB.prepare(
       "SELECT key, value FROM admin_settings WHERE key IN ('telegram_bot_token', 'telegram_admin_uids')"
@@ -832,6 +853,14 @@ export async function onRequest(context) {
           const suppliedSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
           if (!expectedSecret || suppliedSecret !== expectedSecret) return json({ ok: false }, 403);
           const update = await request.json();
+          // Telegram retries webhook deliveries. Ignore an update already processed,
+          // preventing duplicate messages and duplicate donation/status actions.
+          if (update?.update_id !== undefined) {
+            await ensureTelegramTables(env);
+            const receipt = await env.DB.prepare("INSERT OR IGNORE INTO telegram_update_receipts (update_id) VALUES (?)").bind(Number(update.update_id)).run();
+            if (!(receipt?.meta?.changes > 0)) return json({ ok: true, duplicate: true });
+            if (Math.random() < 0.01) await env.DB.prepare("DELETE FROM telegram_update_receipts WHERE received_at < datetime('now', '-2 days')").run().catch(() => {});
+          }
           // Process inline so Telegram callback updates are not dropped when a Pages
           // invocation ends before a background waitUntil task is scheduled.
           await handleTelegramUpdate(update, env, ctx, url.origin);
