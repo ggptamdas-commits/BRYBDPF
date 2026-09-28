@@ -568,7 +568,7 @@
           showToast(data.error || 'সেটআপ ব্যর্থ হয়েছে', 'error');
         }
       } catch (err) {
-        showToast('সার্ভার সংযোগ সমস্যা!', 'error');
+        showToast('আবার চেষ্টা করুন', 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = 'সেটআপ সম্পন্ন করুন';
@@ -605,7 +605,7 @@
         }
       } catch (err) {
         errDiv.classList.add('hidden');
-        showAdminDialog('error', 'সার্ভার সংযোগ সমস্যা', 'সার্ভারের সাথে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
+        showAdminDialog('error', 'আবার চেষ্টা করুন', 'রিকোয়েস্টটি এখন সম্পন্ন করা যায়নি। আপনার তথ্য হারায়নি—কিছুক্ষণ পর আবার চেষ্টা করুন।');
       } finally {
         btn.disabled = false;
         btn.textContent = 'লগইন করুন';
@@ -746,7 +746,7 @@
           showToast('স্ট্যাটাস আপডেট ব্যর্থ হয়েছে', 'error');
         }
       } catch (err) {
-        showToast('সার্ভার সংযোগ সমস্যা!', 'error');
+        showToast('আবার চেষ্টা করুন', 'error');
       }
     }
 
@@ -998,7 +998,7 @@
           showToast('সংরক্ষণ ব্যর্থ হয়েছে', 'error');
         }
       } catch (err) {
-        showToast('সার্ভার সংযোগ সমস্যা!', 'error');
+        showToast('আবার চেষ্টা করুন', 'error');
       }
     }
 
@@ -1013,7 +1013,7 @@
           showToast(data.error || 'টেস্ট মেসেজ পাঠানো যায়নি।', 'error');
         }
       } catch (e) {
-        showToast('সার্ভার সংযোগ সমস্যা!', 'error');
+        showToast('আবার চেষ্টা করুন', 'error');
       }
     }
 
@@ -1028,7 +1028,7 @@
           showToast(data.error || 'ওয়েবহুক কনফিগার ব্যর্থ হয়েছে।', 'error');
         }
       } catch (e) {
-        showToast('সার্ভার সংযোগ সমস্যা!', 'error');
+        showToast('আবার চেষ্টা করুন', 'error');
       }
     }
 
@@ -1057,7 +1057,7 @@
           showToast(data.error || 'পাসওয়ার্ড পরিবর্তন ব্যর্থ হয়েছে', 'error');
         }
       } catch (err) {
-        showToast('সার্ভার সংযোগ সমস্যা!', 'error');
+        showToast('আবার চেষ্টা করুন', 'error');
       }
     }
 

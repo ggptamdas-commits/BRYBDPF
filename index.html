@@ -473,8 +473,8 @@
             <div class="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
               <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-crimson-700 text-white flex items-center justify-center text-2xl shadow-md">♥</div>
               <div>
-                <div class="whitespace-nowrap text-[11px] sm:text-xl font-black tracking-tight"><span class="text-crimson-700">BLOOD</span> DONOR CARD</div>
-                <div class="whitespace-nowrap text-[6px] sm:text-[10px] tracking-[0.12em] sm:tracking-[0.25em] text-slate-500 font-semibold uppercase">Give blood • Save lives</div>
+                <div class="whitespace-nowrap text-[11px] sm:text-xl font-black tracking-tight"><span class="text-crimson-700">BRYBDPF</span> ORGANIZATION CARD</div>
+                <div class="whitespace-nowrap text-[6px] sm:text-[10px] tracking-[0.12em] sm:tracking-[0.25em] text-slate-500 font-semibold uppercase">অফিসিয়াল সংগঠন • Give blood • Save lives</div>
               </div>
             </div>
             <div class="shrink-0 text-right text-white leading-tight relative z-10 pr-0 sm:pr-1">
@@ -768,22 +768,53 @@
         btn.disabled = false;
         btn.innerHTML = 'জরুরি রিকোয়েস্ট সাবমিট করুন';
         alertBox.className = 'hidden';
-        showCustomDialog('error', 'সংযোগ সমস্যা', 'সার্ভারের সাথে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
+        showCustomDialog('warning', 'আবার চেষ্টা করুন', 'রিকোয়েস্টটি এখন সম্পন্ন করা যায়নি। আপনার তথ্য হারায়নি—কিছুক্ষণ পর আবার চেষ্টা করুন।');
         loadCaptcha();
       }
+    }
+
+    async function postDonorRegistration(payload) {
+      const body = JSON.stringify(payload);
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        try {
+          const res = await fetch('/api/donors/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body,
+            cache: 'no-store',
+            signal: controller.signal
+          });
+          clearTimeout(timer);
+          if ([502, 503, 504].includes(res.status) && attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+            continue;
+          }
+          return res;
+        } catch (err) {
+          clearTimeout(timer);
+          lastError = err;
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+            continue;
+          }
+        }
+      }
+      throw lastError || new Error('request-failed');
     }
 
     async function submitDonorRegistration(e) {
       e.preventDefault();
       const alertBox = document.getElementById('donor-alert-box');
       const btn = document.getElementById('reg-submit-btn');
-
       const donorDist = document.getElementById('reg-district').value || 'রংপুর';
       const thanaVal = document.getElementById('reg-area').value;
       const mohollaVal = document.getElementById('reg-moholla') ? document.getElementById('reg-moholla').value.trim() : '';
       const fullArea = mohollaVal ? `${thanaVal} (${mohollaVal})` : thanaVal;
-
       const localPhotoDataUrl = donorPhotoDataUrl;
+      // Deliberately excludes photoDataUrl: the image never leaves this device.
       const payload = {
         name: document.getElementById('reg-name').value,
         blood_group: document.getElementById('reg-bg').value,
@@ -798,43 +829,41 @@
         agreed_future_donation: 1,
         agreed_data_save: 1
       };
-
       btn.disabled = true;
+      let res;
+      let data = {};
       try {
-        const res = await fetch('/api/donors/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        let data = {};
+        res = await postDonorRegistration(payload);
         const text = await res.text();
-        try {
-          data = JSON.parse(text);
-        } catch (parseErr) {
-          throw new Error(text || `সার্ভার সমস্যা (কোড: ${res.status})`);
-        }
-        btn.disabled = false;
-        if (!res.ok) {
-          showRequestResponse(res, data);
-          alertBox.className = 'hidden';
-          loadDonorCaptcha();
-          return;
-        }
-        closeDonorModal();
-        try {
-          showDonorCardModal({ ...payload, photoDataUrl: localPhotoDataUrl });
-        } catch (cardError) {
-          console.error('Local donor card rendering error:', cardError);
-          showCustomDialog('success', 'ডোনার নিবন্ধন সফল', 'আপনার তথ্য সফলভাবে সংরক্ষিত হয়েছে। কার্ডটি তৈরি করতে সাময়িক সমস্যা হয়েছে—পেজটি রিফ্রেশ করে আবার কার্ড খুলুন।');
-        }
-        loadStats(true);
+        try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { error: 'তথ্য যাচাই করা যায়নি।' }; }
       } catch (err) {
+        console.warn('Donor registration retried:', err);
         btn.disabled = false;
         alertBox.className = 'hidden';
-        showCustomDialog('error', 'সংযোগ সমস্যা', 'সার্ভারের সাথে সংযোগ করা যায়নি। কিছুক্ষণ পর আবার চেষ্টা করুন।');
+        loadDonorCaptcha();
+        showCustomDialog('warning', 'আবার চেষ্টা করুন', 'সংযোগ সাময়িকভাবে ধীর ছিল। আপনার তথ্য হারায়নি—একটু পর আবার চেষ্টা করুন।');
+        return;
       }
+      btn.disabled = false;
+      if (!res.ok) {
+        alertBox.className = 'hidden';
+        try {
+          showRequestResponse(res, data);
+        } catch (_) {
+          showCustomDialog('warning', 'তথ্য যাচাই করুন', data.error || 'দেওয়া তথ্যগুলো আবার যাচাই করে চেষ্টা করুন।');
+        }
+        loadDonorCaptcha();
+        return;
+      }
+      closeDonorModal();
+      try {
+        showDonorCardModal({ ...payload, photoDataUrl: localPhotoDataUrl });
+      } catch (cardError) {
+        console.error('Local donor card rendering error:', cardError);
+        showCustomDialog('success', 'ডোনার নিবন্ধন সফল', 'আপনার তথ্য সফলভাবে সংরক্ষিত হয়েছে। কার্ডটি দেখতে পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।');
+      }
+      loadStats(true);
     }
-
     function escapeHtml(str) {
       if (!str) return '';
       return String(str)
@@ -977,9 +1006,9 @@
 
       ctx.fillStyle = '#be123c'; ctx.beginPath(); ctx.arc(82, 82, 34, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = 'bold 42px Arial'; ctx.textAlign = 'center'; ctx.fillText('♥', 82, 96); ctx.textAlign = 'left';
-      ctx.fillStyle = '#be123c'; ctx.font = '900 34px Arial'; ctx.fillText('BLOOD', 132, 75);
-      ctx.fillStyle = '#111827'; ctx.fillText(' DONOR CARD', 265, 75);
-      ctx.fillStyle = '#64748b'; ctx.font = '20px Arial'; ctx.letterSpacing = '5px'; ctx.fillText('GIVE BLOOD  •  SAVE LIVES', 134, 108); ctx.letterSpacing = '0px';
+      ctx.fillStyle = '#be123c'; ctx.font = '900 34px Arial'; ctx.fillText('BRYBDPF', 132, 75);
+      ctx.fillStyle = '#111827'; ctx.fillText(' ORGANIZATION CARD', 292, 75);
+      ctx.fillStyle = '#64748b'; ctx.font = '20px Arial'; ctx.letterSpacing = '3px'; ctx.fillText('OFFICIAL DONOR ORGANIZATION  •  SAVE LIVES', 134, 108); ctx.letterSpacing = '0px';
       ctx.fillStyle = '#fff'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'right'; ctx.fillText('Be a Hero', 1120, 74); ctx.font = '20px Arial'; ctx.fillText('Donate Blood ♥', 1120, 104); ctx.textAlign = 'left';
       ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(48, 140); ctx.lineTo(1152, 140); ctx.stroke();
 
