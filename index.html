@@ -451,7 +451,7 @@
 
   <!-- DIGITAL DONOR ID CARD MODAL -->
   <div id="donor-card-modal" class="fixed inset-0 z-50 hidden bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl p-5 sm:p-7 relative my-auto animate-fade-in">
+    <div class="bg-white rounded-3xl max-w-lg w-full min-w-0 border border-slate-200 shadow-2xl p-3 sm:p-7 relative my-auto animate-fade-in overflow-x-hidden">
       <button onclick="closeDonorCardModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
@@ -465,41 +465,41 @@
       </div>
 
       <!-- VISUAL DONOR CARD -->
-      <div id="donor-card-ui" class="relative overflow-hidden rounded-[28px] bg-white text-slate-900 shadow-2xl ring-1 ring-slate-200 aspect-[1.62] min-h-[290px]">
+      <div id="donor-card-ui" class="relative w-full max-w-full min-w-0 overflow-hidden rounded-[22px] sm:rounded-[28px] bg-white text-slate-900 shadow-2xl ring-1 ring-slate-200 aspect-[1.62] min-h-[250px] sm:min-h-[290px]">
         <div class="absolute top-0 right-0 w-[42%] h-full bg-gradient-to-br from-crimson-700 via-crimson-600 to-[#991b1b] [clip-path:ellipse(82%_70%_at_100%_0%)]"></div>
         <div class="absolute -bottom-20 left-[34%] w-72 h-36 rounded-[50%] bg-rose-100/80 rotate-[-8deg]"></div>
-        <div class="relative h-full p-4 sm:p-5 flex flex-col">
-          <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-10 h-10 rounded-full bg-crimson-700 text-white flex items-center justify-center text-2xl shadow-md">♥</div>
+        <div class="relative h-full min-w-0 p-3 sm:p-5 flex flex-col">
+          <div class="flex min-w-0 items-start justify-between gap-1.5 sm:gap-3 border-b border-slate-200 pb-2 sm:pb-3">
+            <div class="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
+              <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-crimson-700 text-white flex items-center justify-center text-2xl shadow-md">♥</div>
               <div>
-                <div class="text-[15px] sm:text-xl font-black tracking-tight"><span class="text-crimson-700">BLOOD</span> DONOR CARD</div>
-                <div class="text-[8px] sm:text-[10px] tracking-[0.25em] text-slate-500 font-semibold uppercase">Give blood • Save lives</div>
+                <div class="whitespace-nowrap text-[11px] sm:text-xl font-black tracking-tight"><span class="text-crimson-700">BLOOD</span> DONOR CARD</div>
+                <div class="whitespace-nowrap text-[6px] sm:text-[10px] tracking-[0.12em] sm:tracking-[0.25em] text-slate-500 font-semibold uppercase">Give blood • Save lives</div>
               </div>
             </div>
-            <div class="text-right text-white leading-tight relative z-10 pr-1">
-              <div class="text-[10px] sm:text-xs font-bold">Be a Hero</div><div class="text-[9px] sm:text-[11px]">Donate Blood ♥</div>
+            <div class="shrink-0 text-right text-white leading-tight relative z-10 pr-0 sm:pr-1">
+              <div class="text-[8px] sm:text-xs font-bold">Be a Hero</div><div class="text-[7px] sm:text-[11px]">Donate Blood ♥</div>
             </div>
           </div>
-          <div class="relative z-10 flex-1 grid grid-cols-[82px_1fr_76px] sm:grid-cols-[122px_1fr_100px] gap-3 sm:gap-5 items-center py-3">
-            <div class="w-[82px] h-[96px] sm:w-[122px] sm:h-[140px] rounded-2xl overflow-hidden bg-sky-100 border-4 border-white shadow-md">
+          <div class="relative z-10 flex-1 min-w-0 grid grid-cols-[62px_minmax(0,1fr)_58px] sm:grid-cols-[122px_minmax(0,1fr)_100px] gap-2 sm:gap-5 items-center py-2 sm:py-3">
+            <div class="w-[62px] h-[78px] sm:w-[122px] sm:h-[140px] rounded-xl sm:rounded-2xl overflow-hidden bg-sky-100 border-4 border-white shadow-md">
               <img id="card-donor-photo" alt="Donor photo" class="w-full h-full object-cover hidden">
               <div id="card-photo-placeholder" class="w-full h-full flex flex-col items-center justify-center text-crimson-700"><span class="text-3xl">♥</span><span class="text-[8px] font-bold">DONOR</span></div>
             </div>
-            <div class="space-y-1 text-[10px] sm:text-sm leading-tight min-w-0">
-              <div class="truncate"><span class="text-slate-500 inline-block w-16 sm:w-24">নাম</span><b>:</b> <b id="card-donor-name" class="ml-1 text-slate-900">রক্তদাতা</b></div>
-              <div><span class="text-slate-500 inline-block w-16 sm:w-24">ফোন</span><b>:</b> <span id="card-donor-phone" class="ml-1 font-semibold">—</span></div>
-              <div><span class="text-slate-500 inline-block w-16 sm:w-24">এলাকা</span><b>:</b> <span id="card-donor-location" class="ml-1">রংপুর</span></div>
-              <div><span class="text-slate-500 inline-block w-16 sm:w-24">বয়স</span><b>:</b> <span id="card-donor-age" class="ml-1">—</span></div>
-              <div><span class="text-slate-500 inline-block w-16 sm:w-24">Donor ID</span><b>:</b> <span id="card-donor-id" class="ml-1 font-mono">BRY-0000</span></div>
+            <div class="min-w-0 space-y-0.5 sm:space-y-1 text-[8px] sm:text-sm leading-tight">
+              <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">নাম</span><b>:</b> <b id="card-donor-name" class="ml-1 min-w-0 truncate text-slate-900">রক্তদাতা</b></div>
+              <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">ফোন</span><b>:</b> <span id="card-donor-phone" class="ml-1 min-w-0 truncate font-semibold">—</span></div>
+              <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">এলাকা</span><b>:</b> <span id="card-donor-location" class="ml-1 min-w-0 truncate">রংপুর</span></div>
+              <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">বয়স</span><b>:</b> <span id="card-donor-age" class="ml-1 min-w-0 truncate">—</span></div>
+              <div class="flex min-w-0"><span class="text-slate-500 shrink-0 inline-block w-10 sm:w-24">ID</span><b>:</b> <span id="card-donor-id" class="ml-1 min-w-0 truncate font-mono">BRY-0000</span></div>
             </div>
             <div class="relative z-10 text-center">
-              <div class="w-[70px] h-[70px] sm:w-[92px] sm:h-[92px] rounded-xl bg-white p-1 shadow-lg mx-auto"><canvas id="card-qr-code" width="160" height="160" class="w-full h-full"></canvas></div>
-              <div class="text-[7px] sm:text-[9px] font-bold text-white mt-1">SCAN TO VERIFY</div>
+              <div class="w-[54px] h-[54px] sm:w-[92px] sm:h-[92px] rounded-lg sm:rounded-xl bg-white p-1 shadow-lg mx-auto"><canvas id="card-qr-code" width="160" height="160" class="w-full h-full"></canvas></div>
+              <div class="whitespace-nowrap text-[6px] sm:text-[9px] font-bold text-white mt-1">SCAN TO VERIFY</div>
             </div>
           </div>
-          <div class="relative z-10 border-t border-slate-200 pt-2 flex items-end justify-between gap-2">
-            <div class="text-[9px] sm:text-xs font-bold text-crimson-700">A single drop of blood can save a life</div>
+          <div class="relative z-10 min-w-0 border-t border-slate-200 pt-1.5 sm:pt-2 flex items-end justify-between gap-2">
+            <div class="truncate text-[7px] sm:text-xs font-bold text-crimson-700">A single drop of blood can save a life</div>
             <div class="text-right"><div id="card-donor-date" class="text-[7px] sm:text-[9px] text-slate-500"></div><div class="text-[8px] sm:text-[10px] font-mono text-slate-500">brybdpf.pages.dev</div></div>
           </div>
         </div>
