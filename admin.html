@@ -874,6 +874,8 @@
       try {
         const res = await fetch(`/api/admin/requests/${requestId}/match-donors?page=${currentMatchPage}&limit=15`);
         const data = await res.json();
+        if (res.status < 200 || res.status >= 300) throw new Error(data.error || 'ম্যাচিং ডেটা লোড ব্যর্থ হয়েছে');
+        const req = data.request || data;
 
         info.innerHTML = `রোগী: <b>${escapeHtml(req.patient_name)}</b> | রক্তের গ্রুপ: <span class="bg-white/20 px-2 py-0.5 rounded font-black">${escapeHtml(req.blood_group)}</span> | স্থান: <b>${escapeHtml(req.hospital_name)}, ${escapeHtml(req.district)}</b>`;
 
