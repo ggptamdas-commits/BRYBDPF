@@ -1,0 +1,19 @@
+{
+  "name": "BRYBDPF রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক",
+  "short_name": "BRYBDPF",
+  "description": "রংপুর বিভাগের জরুরি রক্তদান ও রক্তদাতা সহায়তা প্ল্যাটফর্ম",
+  "lang": "bn",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#fff7f8",
+  "theme_color": "#be123c",
+  "orientation": "portrait-primary",
+  "categories": ["health", "lifestyle", "social"],
+  "icons": [
+    { "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
