@@ -19,8 +19,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="BRYBDPF">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" type="image/svg+xml" href="/icons/icon-192.svg">
-  <link rel="apple-touch-icon" href="/icons/icon-192.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -71,8 +71,8 @@
     <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-crimson-700 to-crimson-500 flex items-center justify-center text-white shadow-md shadow-crimson-500/20 shrink-0">
-            <svg class="w-5 h-5 sm:w-6 sm:h-6 fill-current blood-drop-pulse" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white flex items-center justify-center shadow-md shadow-slate-900/10 ring-1 ring-slate-200 shrink-0 overflow-hidden">
+            <img src="/branding/logo.png" alt="BRYBDPF logo" class="w-full h-full object-contain" width="1024" height="1024" fetchpriority="high">
           </div>
           <div class="flex items-center">
             <span class="text-lg sm:text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap">BRYBDPF</span>
@@ -103,15 +103,15 @@
         রংপুর বিভাগের ৮টি জেলা ও সকল থানায় জরুরি রক্তের প্রয়োজনে সরাসরি রিকোয়েস্ট পাঠান। আমাদের স্মার্ট সিস্টেম রোগীর নিকটবর্তী রক্তদাতাদের সাথে দ্রুত সমন্বয় করে।
       </p>
       <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <a href="#request-section" class="tap-target inline-flex items-center px-6 py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white font-semibold text-base shadow-lg shadow-crimson-600/30 hover:shadow-xl transition-all">
+        <a href="#request-section" aria-label="জরুরি রক্তের আবেদন করুন" class="tap-target inline-flex items-center justify-center px-6 py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white font-semibold text-base shadow-lg shadow-crimson-600/30 hover:shadow-xl transition-all">
           <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
           জরুরি রক্ত চাই (Request Blood)
         </a>
-        <button onclick="openDonorModal()" class="tap-target inline-flex items-center px-6 py-3 rounded-xl border border-crimson-200 bg-white hover:bg-rose-50/50 text-crimson-700 font-semibold text-base transition">
+        <button onclick="openDonorModal()" aria-label="ডোনার হিসেবে নিবন্ধন করুন" class="tap-target inline-flex items-center justify-center px-6 py-3 rounded-xl border border-crimson-200 bg-white hover:bg-rose-50/50 text-crimson-700 font-semibold text-base shadow-sm hover:shadow-md transition-all">
           <svg class="w-5 h-5 mr-2 text-crimson-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0v1H3v-1z"/></svg>
           ডোনার হিসেবে যুক্ত হোন
         </button>
-        <a href="https://github.com/ggptamdas-commits/BRYBDPF/releases/download/v1.0.0/BRYBDPF.apk" download class="tap-target inline-flex items-center px-6 py-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-base transition shadow-sm">
+        <a href="/downloads/BRYBDPF.apk" download aria-label="BRYBDPF অ্যাপ ডাউনলোড করুন" class="tap-target inline-flex items-center justify-center px-6 py-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-base shadow-sm hover:shadow-md transition-all">
           <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14a2 2 0 0 0 2-2v-2M3 17v2a2 2 0 0 0 2 2"/></svg>
           অ্যাপ ডাউনলোড করুন
         </a>
@@ -530,7 +530,7 @@
         <div class="relative h-full min-w-0 p-3 sm:p-5 flex flex-col">
           <div class="flex min-w-0 items-start justify-between gap-1.5 sm:gap-3 border-b border-slate-200 pb-2 sm:pb-3">
             <div class="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
-              <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-crimson-700 text-white flex items-center justify-center text-2xl shadow-md">♥</div>
+              <div class="w-8 h-8 sm:w-11 sm:h-11 rounded-xl bg-white flex items-center justify-center shadow-md ring-1 ring-slate-200 overflow-hidden shrink-0"><img src="/branding/logo.png" alt="BRYBDPF" class="w-full h-full object-contain" width="1024" height="1024"></div>
               <div>
                 <div class="whitespace-nowrap text-[11px] sm:text-xl font-black tracking-tight"><span class="text-crimson-700">BRYBDPF</span> ORGANIZATION CARD</div>
                 <div class="whitespace-nowrap text-[6px] sm:text-[10px] tracking-[0.12em] sm:tracking-[0.25em] text-slate-500 font-semibold uppercase">অফিসিয়াল সংগঠন • Give blood • Save lives</div>
