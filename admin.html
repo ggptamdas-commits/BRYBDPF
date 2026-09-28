@@ -14,6 +14,8 @@
     .badge-fulfilled { background-color: #D1FAE5; color: #059669; border: 1px solid #6EE7B7; }
     .badge-matched { background-color: #DBEAFE; color: #2563EB; border: 1px solid #93C5FD; }
     .badge-closed { background-color: #F3F4F6; color: #4B5563; border: 1px solid #D1D5DB; }
+    form.was-validated input:invalid, form.was-validated select:invalid, form.was-validated textarea:invalid { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); background-color: #fff7f7; }
+    form.was-validated input[type=checkbox]:invalid { outline: 2px solid #ef4444; outline-offset: 2px; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
@@ -437,6 +439,7 @@
     document.querySelectorAll('form').forEach(form => {
       form.addEventListener('invalid', event => {
         event.preventDefault();
+        form.classList.add('was-validated');
         const dialog = document.getElementById('admin-dialog');
         if (!dialog.classList.contains('flex')) {
           showAdminDialog('warning', 'তথ্য অসম্পূর্ণ', 'প্রয়োজনীয় সব ঘর সঠিকভাবে পূরণ করুন।');

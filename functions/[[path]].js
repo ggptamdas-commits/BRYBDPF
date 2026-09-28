@@ -389,7 +389,7 @@ function getMainAdminReplyKeyboard() {
   return {
     keyboard: [
       [{ text: "📊 পরিসংখ্যান" }, { text: "🩸 গ্রুপভিত্তিক ডোনার" }],
-      [{ text: "📋 পেন্ডিং রিকোয়েস্ট" }, { text: "💉 ডোনেশন মার্ক" }],
+      [{ text: "📋 পেন্ডিং রিকোয়েস্ট" }, { text: "💉 রক্তদান সম্পন্ন" }],
       [{ text: "🔍 ডোনার সার্চ / অ্যাকশন" }, { text: "🔄 রিফ্রেশ মেনু" }]
     ],
     resize_keyboard: true,
@@ -405,7 +405,7 @@ function getMainAdminKeyboard() {
     ],
     [
       { text: "📋 পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" },
-      { text: "💉 ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }
+      { text: "💉 রক্তদান সম্পন্ন", callback_data: "cb:mark_donation" }
     ],
     [
       { text: "🔍 ডোনার সার্চ / অ্যাকশন", callback_data: "cb:donor_search" },
@@ -443,7 +443,7 @@ async function handleTelegramUpdate(update, env, ctx) {
     const renderStats = async (targetChatId, targetMsgId, isCb) => {
       const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
         env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-        env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 AND is_active = 1").first(),
+        env.DB.prepare("SELECT count(*) as count FROM donors WHERE (is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1").first(),
         env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
         env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first()
       ]);
@@ -506,14 +506,10 @@ async function handleTelegramUpdate(update, env, ctx) {
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
-    const renderDonationList = async (targetChatId, targetMsgId, isCb) => {
-      const { results } = await env.DB.prepare(
-        "SELECT id, name, blood_group, phone, district, is_available FROM donors ORDER BY id DESC LIMIT 10"
-      ).all();
-      const rows = results || [];
-      let text = "💉 <b>ডোনেশন মার্ক করুন</b>\nডোনার নির্বাচন করলে আজকের ডোনেশন যোগ হবে এবং তাকে সাময়িকভাবে বিশ্রামে পাঠানো হবে।";
-      const kb = rows.map(d => [{ text: `${d.name} • ${d.blood_group} • #${d.id}`, callback_data: `cb:don:${d.id}` }]);
-      kb.push([{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]);
+    const renderDonationPrompt = async (targetChatId, targetMsgId, isCb, stateKey = targetChatId) => {
+      await env.DB.prepare("INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, data, updated_at) VALUES (?, 'donation_phone', '', datetime('now'))").bind(String(stateKey)).run();
+      const text = "💉 <b>রক্তদান সম্পন্ন মার্ক করুন</b>\nডোনারের নিবন্ধিত ১১ ডিজিটের ফোন নম্বর পাঠান।\n\nফোন পাওয়ার পর আমি ডোনারের নাম ও লিঙ্গ দেখিয়ে আপনার কাছে নিশ্চিতকরণ চাইব।";
+      const kb = [[{ text: "❌ বাতিল", callback_data: "cb:don_cancel" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]];
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
@@ -527,7 +523,7 @@ async function handleTelegramUpdate(update, env, ctx) {
     const renderMatches = async (targetChatId, targetMsgId, requestId, isCb) => {
       const req = await env.DB.prepare("SELECT patient_name, blood_group, district FROM blood_requests WHERE id = ?").bind(requestId).first();
       if (!req) return tgSendOrEdit(token, targetChatId, targetMsgId, "❌ রিকোয়েস্টটি পাওয়া যায়নি।", [[{ text: "🔙 Pending তালিকা", callback_data: "cb:pending" }]], isCb);
-      const { results } = await env.DB.prepare("SELECT name, blood_group, phone, area, district, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1) ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT 8").bind(req.blood_group, req.district).all();
+      const { results } = await env.DB.prepare("SELECT name, blood_group, phone, area, district, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1) ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT 8").bind(req.blood_group, req.district).all();
       const donors = results || [];
       const text = `🩸 <b>#${requestId} — ${escapeHtml(req.patient_name)}</b>\nপ্রয়োজন: <code>${escapeHtml(req.blood_group)}</code> | ${escapeHtml(req.district)}\n────────────────────\n` + (donors.length ? donors.map((d, i) => `${i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.phone)}\n   ${escapeHtml(d.area || '')}, ${escapeHtml(d.district || '')} | দান ${d.total_donations || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো প্রস্তুত ডোনার নেই।");
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, [[{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], isCb);
@@ -553,7 +549,7 @@ async function handleTelegramUpdate(update, env, ctx) {
       }
 
       if (data === "cb:mark_donation") {
-        await renderDonationList(chatId, messageId, true);
+        await renderDonationPrompt(chatId, messageId, true, fromId);
         return;
       }
 
@@ -576,18 +572,35 @@ async function handleTelegramUpdate(update, env, ctx) {
         }
       }
 
-      if (data.startsWith("cb:don:")) {
-        const donorId = data.slice(7);
-        const donor = await env.DB.prepare("SELECT name, blood_group FROM donors WHERE id = ?").bind(donorId).first();
+      if (data === "cb:don_cancel") {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
+        await tgSendOrEdit(token, chatId, messageId, "✅ ডোনেশন মার্ক বাতিল করা হয়েছে。", [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+        return;
+      }
+
+      if (data.startsWith("cb:don_confirm:")) {
+        const donorId = data.slice("cb:don_confirm:".length);
+        const donor = await env.DB.prepare("SELECT id, name, blood_group, gender, is_available FROM donors WHERE id = ?").bind(donorId).first();
         if (!donor) {
           await tgSendOrEdit(token, chatId, messageId, "❌ ডোনারটি পাওয়া যায়নি।", [[{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
           return;
         }
-        await env.DB.prepare("UPDATE donors SET total_donations = COALESCE(total_donations, 0) + 1, last_donation_date = date('now'), is_available = 0, updated_at = datetime('now') WHERE id = ?").bind(donorId).run();
-        await tgSendOrEdit(token, chatId, messageId, `✅ <b>${escapeHtml(donor.name)}</b> (${escapeHtml(donor.blood_group)})-এর আজকের ডোনেশন মার্ক হয়েছে।\nতাকে সাময়িকভাবে বিশ্রামে পাঠানো হয়েছে।`, [[{ text: "💉 আরেকজন মার্ক করুন", callback_data: "cb:mark_donation" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+        const isFemale = /female|মহিলা|নারী|মেয়ে|মেয়ে/i.test(String(donor.gender || ''));
+        const months = isFemale ? 4 : 3;
+        const nextAvailable = new Date();
+        nextAvailable.setMonth(nextAvailable.getMonth() + months);
+        const nextDate = nextAvailable.toISOString().slice(0, 10);
+        const nextDateBn = nextAvailable.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
+        await env.DB.prepare("UPDATE donors SET total_donations = COALESCE(total_donations, 0) + 1, last_donation_date = date('now'), next_available_date = ?, is_available = 0, updated_at = datetime('now') WHERE id = ?").bind(nextDate, donorId).run();
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
+        await tgSendOrEdit(token, chatId, messageId, `✅ <b>রক্তদান সম্পন্ন হিসেবে সংরক্ষণ হয়েছে</b>\n\n👤 ${escapeHtml(donor.name)} (${escapeHtml(donor.blood_group)})\n📅 আজকের ডোনেশন যোগ হয়েছে\n⏸️ ${months} মাসের জন্য আন-অ্যাভেইলেবল\n🟢 আবার রক্ত দিতে পারবেন: <b>${nextDateBn}</b>`, [[{ text: "💉 আরেকজনের ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
         return;
       }
 
+      if (data.startsWith("cb:don:")) {
+        await renderDonationPrompt(chatId, messageId, true);
+        return;
+      }
       if (data === "cb:menu") {
         const text = "🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল</b> 🩸\nস্বাগতম! নিচের বাটনগুলো ব্যবহার করে পরিচালনা করুন:";
         await tgSendOrEdit(token, chatId, messageId, text, getMainAdminKeyboard(), true);
@@ -607,7 +620,7 @@ async function handleTelegramUpdate(update, env, ctx) {
       if (data.startsWith("cb:grp:")) {
         const bg = data.replace("cb:grp:", "").trim();
         const { results } = await env.DB.prepare(
-          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1) ORDER BY id DESC LIMIT 10"
+          "SELECT id, name, phone, district, area, last_donation_date, total_donations FROM donors WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1) ORDER BY id DESC LIMIT 10"
         ).bind(bg).all();
 
         let donorText = "";
@@ -648,7 +661,24 @@ async function handleTelegramUpdate(update, env, ctx) {
         return;
       }
 
-      const stateRow = await env.DB.prepare("SELECT state FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).first();
+      const stateRow = await env.DB.prepare("SELECT state, data FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).first();
+      if (stateRow?.state === 'donation_phone' && text && !text.startsWith('/')) {
+        const cleanPhone = normalizePhone(text);
+        if (!isValidPhone(cleanPhone)) {
+          await tgSendMessage(token, chatId, "⚠️ সঠিক ১১ ডিজিটের ফোন নম্বর দিন। যেমন: <code>017XXXXXXXX</code>", [[{ text: "❌ বাতিল", callback_data: "cb:don_cancel" }]]);
+          return;
+        }
+        const donor = await env.DB.prepare("SELECT id, name, blood_group, gender, is_available, next_available_date FROM donors WHERE phone = ?").bind(cleanPhone).first();
+        if (!donor) {
+          await tgSendMessage(token, chatId, "❌ এই ফোন নম্বরের কোনো নিবন্ধিত ডোনার পাওয়া যায়নি। নম্বরটি আবার পাঠান বা বাতিল করুন।", [[{ text: "🔄 আবার চেষ্টা", callback_data: "cb:mark_donation" }], [{ text: "❌ বাতিল", callback_data: "cb:don_cancel" }]]);
+          return;
+        }
+        await env.DB.prepare("INSERT OR REPLACE INTO bot_admin_states (admin_uid, state, data, updated_at) VALUES (?, 'donation_confirm', ?, datetime('now'))").bind(String(fromId), JSON.stringify({ donor_id: donor.id })).run();
+        const genderText = /female|মহিলা|নারী|মেয়ে|মেয়ে/i.test(String(donor.gender || '')) ? 'নারী' : 'পুরুষ';
+        await tgSendMessage(token, chatId, `🔎 <b>ডোনার পাওয়া গেছে</b>\n\n👤 নাম: <b>${escapeHtml(donor.name)}</b>\n🩸 গ্রুপ: <b>${escapeHtml(donor.blood_group)}</b>\n⚧ লিঙ্গ: ${genderText}\n📞 ফোন: <code>${escapeHtml(cleanPhone)}</code>\n\nআপনি কি নিশ্চিত যে এই ডোনার আজ রক্ত দিয়েছেন?`, [[{ text: "✅ হ্যাঁ, নিশ্চিত", callback_data: `cb:don_confirm:${donor.id}` }, { text: "❌ না, বাতিল", callback_data: "cb:don_cancel" }]]);
+        return;
+      }
+
       if (stateRow?.state === 'donor_search' && text && !text.startsWith('/')) {
         await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
         const term = text.trim().slice(0, 80);
@@ -676,7 +706,7 @@ async function handleTelegramUpdate(update, env, ctx) {
       }
 
       if (text.includes("ডোনেশন")) {
-        await renderDonationList(chatId, null, false);
+        await renderDonationPrompt(chatId, null, false);
         return;
       }
 
@@ -792,7 +822,7 @@ export async function onRequest(context) {
       if (path === "/api/stats" && method === "GET") {
         const [donorsRes, availRes, reqRes, distRes, pendingRes, completedRes] = await Promise.all([
           env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-          env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 AND is_active = 1").first(),
+          env.DB.prepare("SELECT count(*) as count FROM donors WHERE (is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1").first(),
           env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
           env.DB.prepare("SELECT count(DISTINCT district) as count FROM donors WHERE TRIM(district) != ''").first(),
           env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
@@ -954,7 +984,7 @@ export async function onRequest(context) {
                 ELSE 3
               END) as proximity_tier
             FROM donors 
-            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1)
+            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)
             ORDER BY proximity_tier ASC, id DESC LIMIT 15
           `).bind(reqDist, reqThana, reqThana, reqDist, blood_group.trim().toUpperCase()).all();
 
@@ -1100,7 +1130,7 @@ export async function onRequest(context) {
         if (path === "/api/admin/data" && method === "GET") {
           const [donorsRes, availRes, reqRes, pendingRes, completedRes] = await Promise.all([
             env.DB.prepare("SELECT count(*) as count FROM donors").first(),
-            env.DB.prepare("SELECT count(*) as count FROM donors WHERE is_available = 1 AND is_active = 1").first(),
+            env.DB.prepare("SELECT count(*) as count FROM donors WHERE (is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1").first(),
             env.DB.prepare("SELECT count(*) as count FROM blood_requests").first(),
             env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
             env.DB.prepare("SELECT count(*) as count FROM blood_requests WHERE LOWER(status) = 'fulfilled'").first()
@@ -1244,7 +1274,7 @@ export async function onRequest(context) {
                 ELSE 3
               END) as proximity_tier
             FROM donors 
-            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND (is_available = 1 AND is_active = 1)
+            WHERE REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)
             ORDER BY proximity_tier ASC, id DESC LIMIT 15
           `).bind(reqDist, reqThana, reqThana, reqDist, reqItem.blood_group.trim().toUpperCase()).all();
 

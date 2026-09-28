@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS donors (
   agreed_future_donation INTEGER DEFAULT 1,
   agreed_data_save INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  next_available_date TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_donors_bg ON donors(blood_group);

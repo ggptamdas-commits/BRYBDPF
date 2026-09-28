@@ -45,6 +45,9 @@
       50% { transform: scale(1.08); filter: drop-shadow(0 10px 15px rgba(225, 29, 72, 0.6)); }
     }
     .tap-target { min-height: 44px; min-width: 44px; }
+    form.was-validated input:invalid, form.was-validated select:invalid, form.was-validated textarea:invalid { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); background-color: #fff7f7; }
+    form.was-validated input[type=checkbox]:invalid { outline: 2px solid #ef4444; outline-offset: 2px; }
+    form.was-validated input:valid, form.was-validated select:valid, form.was-validated textarea:valid { border-color: #86efac; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-crimson-100 selection:text-crimson-800">
@@ -575,6 +578,7 @@
     document.querySelectorAll('form').forEach(form => {
       form.addEventListener('invalid', event => {
         event.preventDefault();
+        form.classList.add('was-validated');
         const dialog = document.getElementById('custom-dialog');
         if (!dialog.classList.contains('flex')) {
           showCustomDialog('warning', 'তথ্য অসম্পূর্ণ', 'লাল চিহ্নিত বা প্রয়োজনীয় সব ঘর সঠিকভাবে পূরণ করুন।');
@@ -588,7 +592,7 @@
       if (data.code === 'REQUEST_COOLDOWN') return showCustomDialog('warning', '২৪ ঘণ্টার সীমা', msg);
       if (msg.includes('ক্যাপচা')) return showCustomDialog('error', 'ক্যাপচা সঠিক নয়', 'ক্যাপচার উত্তরটি ভুল হয়েছে বা মেয়াদ শেষ হয়েছে। নতুন ক্যাপচা নিয়ে আবার চেষ্টা করুন।');
       if (res.status === 429) return showCustomDialog('warning', 'অনেকবার চেষ্টা হয়েছে', msg);
-      if (res.status === 409) return showCustomDialog('warning', 'তথ্য আগে থেকেই আছে', msg);
+      if (res.status === 409) return showCustomDialog('warning', 'ডোনার আগে থেকেই নিবন্ধিত', msg || 'এই মোবাইল নম্বর দিয়ে আগে থেকেই একজন ডোনার নিবন্ধিত আছেন।');
       if (res.status >= 500) return showCustomDialog('error', 'সার্ভার সমস্যা', 'সাময়িকভাবে সার্ভারে সমস্যা হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।');
       return showCustomDialog('error', 'আবেদন সম্পন্ন হয়নি', msg);
     }
