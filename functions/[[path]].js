@@ -813,7 +813,9 @@ export async function onRequest(context) {
           const suppliedSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
           if (!expectedSecret || suppliedSecret !== expectedSecret) return json({ ok: false }, 403);
           const update = await request.json();
-          ctx.waitUntil(handleTelegramUpdate(update, env, ctx, url.origin));
+          // Process inline so Telegram callback updates are not dropped when a Pages
+          // invocation ends before a background waitUntil task is scheduled.
+          await handleTelegramUpdate(update, env, ctx, url.origin);
           return json({ ok: true });
         } catch (e) {
           return json({ ok: false, error: e.message }, 500);
