@@ -225,6 +225,7 @@ async function verifyCaptcha(env, token, userAnswer) {
 }
 
 async function sendTelegramAlert(env, requestData, matchedDonors) {
+  const delivery = { recipients: 0, textSent: 0, posterSent: 0, posterError: null };
   try {
     let token = "";
     let adminUidsStr = "";
@@ -241,7 +242,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     if (!token && env.TELEGRAM_BOT_TOKEN) token = env.TELEGRAM_BOT_TOKEN;
     if (!adminUidsStr && env.TELEGRAM_ADMIN_IDS) adminUidsStr = env.TELEGRAM_ADMIN_IDS;
 
-    if (!token || !adminUidsStr) return;
+    if (!token || !adminUidsStr) return { ...delivery, posterError: 'Telegram token or admin IDs are not configured.' };
 
     // Telegram may retry webhook/workerd executions. Claim each request once so one
     // blood request cannot fan out duplicate alerts to every admin.
@@ -252,7 +253,8 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     }
 
     const uids = parseTelegramAdminUids(adminUidsStr);
-    if (uids.length === 0) return;
+    if (uids.length === 0) return { ...delivery, posterError: 'No valid Telegram admin IDs are configured.' };
+    delivery.recipients = uids.length;
 
     const reqCleanPhone = (requestData.contact_phone || "").replace(/[^0-9]/g, "");
     const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
@@ -344,6 +346,8 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
               disable_web_page_preview: true
             })
           });
+        } else {
+          delivery.textSent += 1;
         }
 
         // Keep the original text alert, then add a clean poster containing only
@@ -353,14 +357,21 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
           if (!posterRes.ok) {
             const posterError = await posterRes.json().catch(() => ({}));
             console.error(`Telegram poster send to ${uid} failed:`, posterError);
+            delivery.posterError = posterError?.description || `HTTP ${posterRes.status}`;
+          } else {
+            delivery.posterSent += 1;
           }
+        } else {
+          delivery.posterError = 'Poster PNG generation failed before sending.';
         }
       } catch (sendErr) {
         console.error(`Error sending to uid ${uid}:`, sendErr);
       }
     }
+    return delivery;
   } catch (err) {
     console.error("Error sending Telegram alert:", err);
+    return { ...delivery, posterError: err?.message || 'Telegram alert failed.' };
   }
 }
 
@@ -1847,18 +1858,34 @@ export async function onRequest(context) {
             patient_name: "পরীক্ষামূলক রোগী",
             blood_group: "O+",
             units: 1,
+            hemoglobin: "13.2",
+            hemoglobin_unknown: false,
             hospital_name: "রংপুর মেডিকেল কলেজ হাসপাতাল",
             district: "রংপুর",
+            thana: "সদর",
             location: "মেডিকেল মোড়",
             contact_phone: "01700000000",
             needed_by: "জরুরি",
-            note: "BRYBDPF টেলিগ্রাম বট টেস্ট সফল!"
+            note: "BRYBDPF টেলিগ্রাম বট টেস্ট সফল!",
+            requester_name: "BRYBDPF টেস্ট অ্যাডমিন",
+            requester_current_address: "রংপুর"
           };
           const sampleDonors = [
             { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", area: "মেডিকেল মোড়", phone: "01711111111" }
           ];
-          await sendTelegramAlert(env, testRequest, sampleDonors);
-          return json({ success: true, recipients: testUids.length, webhook_configured: webhookData.ok === true, message: webhookData.ok === true ? `টেস্ট মেসেজ ${testUids.length} জন admin-কে পাঠানো হয়েছে এবং বটের বাটন/ওয়েবহুক সক্রিয় করা হয়েছে।` : `টেস্ট মেসেজ ${testUids.length} জন admin-কে পাঠানো হয়েছে, কিন্তু ওয়েবহুক সেটআপ ব্যর্থ হয়েছে।` });
+          const delivery = await sendTelegramAlert(env, testRequest, sampleDonors);
+          const posterOk = delivery?.posterSent === testUids.length;
+          return json({
+            success: posterOk,
+            recipients: testUids.length,
+            text_sent: delivery?.textSent || 0,
+            poster_sent: delivery?.posterSent || 0,
+            poster_error: delivery?.posterError || null,
+            webhook_configured: webhookData.ok === true,
+            message: posterOk
+              ? `টেস্ট মেসেজ ও PNG পোস্টার ${testUids.length} জন admin-কে পাঠানো হয়েছে।`
+              : `টেক্সট পাঠানো হয়েছে, কিন্তু PNG পোস্টার পাঠানো যায়নি: ${delivery?.posterError || 'অজানা Telegram error'}`
+          });
         }
       }
 
