@@ -318,6 +318,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       posterPng = await renderBloodRequestPosterPng(await buildBloodRequestPosterSvg(requestData));
     } catch (posterRenderError) {
       console.error('Blood request poster PNG render failed:', posterRenderError);
+      delivery.posterError = `Poster generation failed: ${posterRenderError?.message || String(posterRenderError)}`.slice(0, 500);
     }
 
     for (const uid of uids) {
