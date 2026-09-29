@@ -199,7 +199,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       if (!(claim?.meta?.changes > 0)) return;
     }
 
-    const uids = adminUidsStr.split(",").map(u => u.trim()).filter(Boolean);
+    const uids = parseTelegramAdminUids(adminUidsStr);
     if (uids.length === 0) return;
 
     const reqCleanPhone = (requestData.contact_phone || "").replace(/[^0-9]/g, "");
@@ -387,6 +387,13 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;");
 }
 
+function parseTelegramAdminUids(value) {
+  return String(value || '')
+    .split(/[\s,;]+/)
+    .map(v => v.trim())
+    .filter(v => /^-?\d+$/.test(v));
+}
+
 async function tgSendMessage(token, chatId, text, inlineKeyboard = null, parseMode = "HTML") {
   const payload = {
     chat_id: chatId,
@@ -505,7 +512,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
 
     if (!token) return;
 
-    const allowedUids = (adminUidsStr || "").split(",").map(u => u.trim()).filter(Boolean);
+    const allowedUids = parseTelegramAdminUids(adminUidsStr);
 
     const renderStats = async (targetChatId, targetMsgId, isCb) => {
       const [donorsRes, availRes, reqRes, pendingRes] = await Promise.all([
@@ -909,6 +916,8 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         await renderGroups(chatId, null, false);
         return;
       }
+
+      await tgSendMessage(token, chatId, "🩸 <b>আপনার admin access সক্রিয় আছে</b>\nনিচের menu থেকে একটি অপশন নির্বাচন করুন:", getMainAdminKeyboard());
     }
   } catch (err) {
     console.error("Telegram bot error:", err);
@@ -1588,6 +1597,9 @@ export async function onRequest(context) {
         if (path === "/api/admin/test-telegram" && method === "POST") {
           const tokenRes = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_bot_token'").first();
           if (!tokenRes?.value) return json({ success: false, error: "টেলিগ্রাম বট টোকেন কনফিগার করা নেই।" }, 400);
+          const uidRow = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = 'telegram_admin_uids'").first();
+          const testUids = parseTelegramAdminUids(uidRow?.value || env.TELEGRAM_ADMIN_IDS || '');
+          if (!testUids.length) return json({ success: false, error: "কোনো বৈধ Telegram admin ID কনফিগার করা নেই। উদাহরণ: 7430012162" }, 400);
           const secretRow = await env.DB.prepare("SELECT value FROM admin_settings WHERE key = ?").bind(TELEGRAM_WEBHOOK_SECRET_KEY).first();
           const webhookSecret = env.TELEGRAM_WEBHOOK_SECRET || secretRow?.value || generateRandomToken(24);
           if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
@@ -1600,7 +1612,6 @@ export async function onRequest(context) {
           });
           const webhookData = await webhookResponse.json().catch(() => ({}));
           const testRequest = {
-            id: 9999,
             patient_name: "পরীক্ষামূলক রোগী",
             blood_group: "O+",
             units: 1,
@@ -1615,7 +1626,7 @@ export async function onRequest(context) {
             { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", area: "মেডিকেল মোড়", phone: "01711111111" }
           ];
           await sendTelegramAlert(env, testRequest, sampleDonors);
-          return json({ success: true, webhook_configured: webhookData.ok === true, message: webhookData.ok === true ? "টেস্ট মেসেজ পাঠানো হয়েছে এবং বটের বাটন/ওয়েবহুক সক্রিয় করা হয়েছে।" : "টেস্ট মেসেজ পাঠানো হয়েছে, কিন্তু ওয়েবহুক সেটআপ ব্যর্থ হয়েছে। নতুন বট টোকেন দিয়ে আবার চেষ্টা করুন।" });
+          return json({ success: true, recipients: testUids.length, webhook_configured: webhookData.ok === true, message: webhookData.ok === true ? `টেস্ট মেসেজ ${testUids.length} জন admin-কে পাঠানো হয়েছে এবং বটের বাটন/ওয়েবহুক সক্রিয় করা হয়েছে।` : `টেস্ট মেসেজ ${testUids.length} জন admin-কে পাঠানো হয়েছে, কিন্তু ওয়েবহুক সেটআপ ব্যর্থ হয়েছে।` });
         }
       }
 
