@@ -318,7 +318,11 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       posterPng = await renderBloodRequestPosterPng(await buildBloodRequestPosterSvg(requestData));
     } catch (posterRenderError) {
       console.error('Blood request poster PNG render failed:', posterRenderError);
-      delivery.posterError = `Poster generation failed: ${posterRenderError?.message || String(posterRenderError)}`.slice(0, 500);
+      try {
+        posterPng = await renderBloodRequestPosterPng(buildFallbackBloodRequestPosterSvg(requestData));
+      } catch (fallbackError) {
+        delivery.posterError = `Poster generation failed: ${fallbackError?.message || String(fallbackError)}`.slice(0, 500);
+      }
     }
 
     for (const uid of uids) {
@@ -572,6 +576,34 @@ async function buildBloodRequestPosterSvg(data) {
     <style>
       .brand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55;letter-spacing:6px}.brandBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;font-weight:400;fill:#d90429}.brandSub{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;font-weight:400;fill:#0b2b55}.title{font-family:'Noto Sans Bengali',sans-serif;font-size:64px;font-weight:400;fill:#fff}.sectionHint{font-family:'Noto Sans Bengali',sans-serif;font-size:29px;font-weight:400;fill:#0b2b55}.label{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;font-weight:400;fill:#0b2b55}.field{fill:#fff;stroke:#475569;stroke-width:3}.value{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;font-weight:400;fill:#172554}.footer{font-family:'Noto Sans Bengali',sans-serif;font-size:36px;font-weight:400;fill:#d90429}.url{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}
     </style>
+  </svg>`;
+}
+
+function buildFallbackBloodRequestPosterSvg(data) {
+  const fields = [
+    ['রোগীর পুরো নাম', posterText(data.patient_name)],
+    ['রক্তের গ্রুপ', posterText(data.blood_group)],
+    ['রক্তের পরিমাণ (ব্যাগ)', posterText(data.units, '১')],
+    ['হিমোগ্লোবিন', data.hemoglobin_unknown ? 'জানা নেই' : posterText(data.hemoglobin)],
+    ['রক্ত লাগবে', posterText(data.needed_by)],
+    ['চিকিৎসাধীন জেলা', posterText(data.district)],
+    ['হাসপাতালের থানা / এলাকা', posterText(data.thana)],
+    ['হাসপাতালের নাম ও ওয়ার্ড', posterText(data.hospital_name)],
+    ['সুনির্দিষ্ট ঠিকানা / রোড', posterText(data.location)],
+    ['রোগের কারণ / অতিরিক্ত তথ্য', posterText(data.note)],
+    ['আবেদনকারীর পুরো নাম', posterText(data.requester_name, 'স্বজন')],
+    ['যোগাযোগের মোবাইল নম্বর', posterText(data.contact_phone)]
+  ];
+  const rows = fields.map(([label, value], index) => {
+    const y = 426 + index * 75;
+    return `<rect x="50" y="${y - 47}" width="1100" height="62" rx="14" fill="#fff" stroke="#475569" stroke-width="3"/><text x="72" y="${y - 8}" textLength="365" lengthAdjust="spacingAndGlyphs" class="fallbackLabel">${index + 1}. ${escapeXml(label)}:</text><text x="478" y="${y - 8}" textLength="640" lengthAdjust="spacingAndGlyphs" class="fallbackValue">${escapeXml(value)}</text>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
+    <rect width="1200" height="1500" fill="#fff"/><rect width="1200" height="20" fill="#0b2b55"/><rect y="20" width="1200" height="20" fill="#d90429"/>
+    <text x="600" y="104" text-anchor="middle" class="fallbackBrand">BRYBDPF</text><text x="600" y="158" text-anchor="middle" class="fallbackBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text><text x="600" y="194" text-anchor="middle" class="fallbackSub">জরুরি রক্ত সহায়তা — মানবতার পাশে</text>
+    <path d="M88 228H1112" stroke="#0b2b55" stroke-width="6"/><path d="M88 238H1112" stroke="#d90429" stroke-width="3"/><rect x="76" y="270" width="1048" height="112" rx="28" fill="#d90429" stroke="#8f1235" stroke-width="8"/><text x="600" y="345" text-anchor="middle" class="fallbackTitle">জরুরি রক্তের প্রয়োজন</text><text x="600" y="402" text-anchor="middle" class="fallbackHint">রোগীর তথ্য ও যোগাযোগের তথ্য</text>
+    ${rows}<path d="M70 1370H1130" stroke="#0b2b55" stroke-width="7"/><path d="M70 1382H1130" stroke="#d90429" stroke-width="3"/><text x="600" y="1430" text-anchor="middle" class="fallbackFooter">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text><text x="600" y="1470" text-anchor="middle" class="fallbackUrl">BRYBDPF • brybdpf.pages.dev</text>
+    <style>.fallbackBrand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55}.fallbackBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;fill:#d90429}.fallbackSub,.fallbackHint{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;fill:#0b2b55}.fallbackTitle{font-family:'Noto Sans Bengali',sans-serif;font-size:64px;fill:#fff}.fallbackLabel{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;fill:#0b2b55}.fallbackValue{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;fill:#172554}.fallbackFooter{font-family:'Noto Sans Bengali',sans-serif;font-size:36px;fill:#d90429}.fallbackUrl{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}</style>
   </svg>`;
 }
 
