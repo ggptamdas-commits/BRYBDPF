@@ -112,3 +112,23 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+-- Telegram admin operations: one active owner per request and an append-only audit trail.
+CREATE TABLE IF NOT EXISTS telegram_request_claims (
+  request_id INTEGER PRIMARY KEY,
+  admin_uid TEXT NOT NULL,
+  claimed_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS telegram_admin_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_uid TEXT NOT NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id INTEGER,
+  details TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_tg_audit_created ON telegram_admin_audit(created_at);
+CREATE INDEX IF NOT EXISTS idx_tg_audit_entity ON telegram_admin_audit(entity_type, entity_id);

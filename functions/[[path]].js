@@ -349,10 +349,22 @@ async function ensureTelegramTables(env) {
     telegramTablesReady = Promise.all([
       env.DB.prepare("CREATE TABLE IF NOT EXISTS bot_admin_states (admin_uid TEXT PRIMARY KEY, state TEXT, data TEXT, updated_at TEXT DEFAULT (datetime('now')))").run(),
       env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_update_receipts (update_id INTEGER PRIMARY KEY, received_at TEXT DEFAULT (datetime('now')))").run(),
-      env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_alert_claims (request_id INTEGER PRIMARY KEY, claimed_at TEXT DEFAULT (datetime('now')))").run()
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_alert_claims (request_id INTEGER PRIMARY KEY, claimed_at TEXT DEFAULT (datetime('now')))").run(),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_request_claims (request_id INTEGER PRIMARY KEY, admin_uid TEXT NOT NULL, claimed_at TEXT DEFAULT (datetime('now')))").run(),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS telegram_admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_uid TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT, entity_id INTEGER, details TEXT, created_at TEXT DEFAULT (datetime('now')))").run(),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tg_audit_created ON telegram_admin_audit(created_at)").run()
     ]).catch(error => { telegramTablesReady = null; throw error; });
   }
   return telegramTablesReady;
+}
+
+async function recordTelegramAudit(env, adminUid, action, entityType = null, entityId = null, details = '') {
+  try {
+    await env.DB.prepare("INSERT INTO telegram_admin_audit (admin_uid, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)")
+      .bind(String(adminUid), String(action), entityType, entityId === null ? null : Number(entityId), String(details || '').slice(0, 500)).run();
+  } catch (error) {
+    console.error('Telegram audit error:', error);
+  }
 }
 
 async function isRateLimited(env, key, limit, windowMinutes) {
@@ -441,9 +453,10 @@ async function tgSendOrEdit(token, chatId, messageId, text, replyMarkup, isCallb
 function getMainAdminReplyKeyboard() {
   return {
     keyboard: [
-      [{ text: "📊 পরিসংখ্যান" }, { text: "🩸 গ্রুপভিত্তিক ডোনার" }],
-      [{ text: "📋 পেন্ডিং রিকোয়েস্ট" }, { text: "💉 রক্তদান সম্পন্ন" }],
-      [{ text: "🔍 ডোনার সার্চ / অ্যাকশন" }, { text: "🔄 রিফ্রেশ মেনু" }]
+      [{ text: "⚡ অপারেশন ড্যাশবোর্ড" }, { text: "📊 পরিসংখ্যান" }],
+      [{ text: "🩸 গ্রুপভিত্তিক ডোনার" }, { text: "📋 পেন্ডিং রিকোয়েস্ট" }],
+      [{ text: "💉 রক্তদান সম্পন্ন" }, { text: "🔍 ডোনার সার্চ / অ্যাকশন" }],
+      [{ text: "🔄 রিফ্রেশ মেনু" }]
     ],
     resize_keyboard: true,
     is_persistent: true
@@ -453,15 +466,18 @@ function getMainAdminReplyKeyboard() {
 function getMainAdminKeyboard() {
   return [
     [
-      { text: "📊 পরিসংখ্যান ও গ্রুপ ডাটা", callback_data: "cb:stats" },
-      { text: "🩸 গ্রুপভিত্তিক ডোনার", callback_data: "cb:groups" }
+      { text: "⚡ অপারেশন ড্যাশবোর্ড", callback_data: "cb:ops" },
+      { text: "📊 পরিসংখ্যান ও গ্রুপ ডাটা", callback_data: "cb:stats" }
     ],
     [
-      { text: "📋 পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" },
-      { text: "💉 রক্তদান সম্পন্ন", callback_data: "cb:mark_donation" }
+      { text: "🩸 গ্রুপভিত্তিক ডোনার", callback_data: "cb:groups" },
+      { text: "📋 পেন্ডিং রিকোয়েস্ট", callback_data: "cb:pending" }
     ],
     [
-      { text: "🔍 ডোনার সার্চ / অ্যাকশন", callback_data: "cb:donor_search" },
+      { text: "💉 রক্তদান সম্পন্ন", callback_data: "cb:mark_donation" },
+      { text: "🔍 ডোনার সার্চ / অ্যাকশন", callback_data: "cb:donor_search" }
+    ],
+    [
       { text: "🔄 রিফ্রেশ", callback_data: "cb:menu" }
     ]
   ];
@@ -519,6 +535,59 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
+    const renderOperations = async (targetChatId, targetMsgId, isCb) => {
+      const [pending, urgent, today, fulfilled, claims, groups] = await Promise.all([
+        env.DB.prepare("SELECT COUNT(*) AS c FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched')").first(),
+        env.DB.prepare("SELECT COUNT(*) AS c FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched') AND LOWER(COALESCE(urgency, 'urgent')) = 'urgent'").first(),
+        env.DB.prepare("SELECT COUNT(*) AS c FROM blood_requests WHERE date(created_at) = date('now')").first(),
+        env.DB.prepare("SELECT COUNT(*) AS c FROM blood_requests WHERE LOWER(status) = 'fulfilled' AND date(created_at) = date('now')").first(),
+        env.DB.prepare("SELECT COUNT(*) AS c FROM telegram_request_claims c JOIN blood_requests r ON r.id = c.request_id WHERE LOWER(r.status) IN ('pending', 'matched')").first(),
+        env.DB.prepare("SELECT blood_group, COUNT(*) AS c FROM donors WHERE is_active = 1 AND (is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) GROUP BY blood_group ORDER BY c DESC").all()
+      ]);
+      const groupLine = (groups.results || []).slice(0, 8).map(g => `${escapeHtml(g.blood_group)}: <b>${g.c}</b>`).join('  •  ') || 'এখনও কোনো ডাটা নেই';
+      const text = `⚡ <b>BRYBDPF অপারেশন ড্যাশবোর্ড</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `🚨 <b>জরুরি pending:</b> ${urgent?.c || 0}\n` +
+        `📋 <b>মোট active case:</b> ${pending?.c || 0}\n` +
+        `👤 <b>Claim করা case:</b> ${claims?.c || 0}\n` +
+        `📅 <b>আজকের request:</b> ${today?.c || 0}\n` +
+        `✅ <b>আজ fulfilled:</b> ${fulfilled?.c || 0}\n\n` +
+        `🩸 <b>Available blood group:</b>\n${groupLine}`;
+      const kb = [
+        [{ text: '🚨 Pending cases', callback_data: 'cb:pending' }, { text: '📊 বিস্তারিত stats', callback_data: 'cb:stats' }],
+        [{ text: '🧾 Admin activity log', callback_data: 'cb:audit' }],
+        [{ text: '🔄 Refresh', callback_data: 'cb:ops' }, { text: '🔙 মূল মেনু', callback_data: 'cb:menu' }]
+      ];
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
+    const renderAudit = async (targetChatId, targetMsgId, isCb) => {
+      const { results } = await env.DB.prepare("SELECT admin_uid, action, entity_type, entity_id, details, created_at FROM telegram_admin_audit ORDER BY id DESC LIMIT 10").all();
+      const rows = results || [];
+      const text = `🧾 <b>সাম্প্রতিক admin activity</b>\n────────────────────\n` + (rows.length ? rows.map((r, i) => `${i + 1}. <b>${escapeHtml(r.action)}</b> ${r.entity_id ? `#${r.entity_id}` : ''}\n   👤 ${escapeHtml(r.admin_uid)} • ${escapeHtml(r.created_at || '')}\n   ${escapeHtml(r.details || '')}`).join('\n\n') : 'এখনও কোনো activity record নেই।');
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, [[{ text: '🔄 Refresh', callback_data: 'cb:audit' }], [{ text: '⚡ অপারেশন ড্যাশবোর্ড', callback_data: 'cb:ops' }], [{ text: '🔙 মূল মেনু', callback_data: 'cb:menu' }]], isCb);
+    };
+
+    const renderRequestDetails = async (targetChatId, targetMsgId, requestId, adminUid, isCb) => {
+      const req = await env.DB.prepare("SELECT id, patient_name, blood_group, units, hospital_name, district, thana, location, contact_phone, urgency, needed_by, note, status, created_at FROM blood_requests WHERE id = ?").bind(requestId).first();
+      if (!req) return tgSendOrEdit(token, targetChatId, targetMsgId, '❌ রিকোয়েস্টটি পাওয়া যায়নি।', [[{ text: '📋 Pending তালিকা', callback_data: 'cb:pending' }]], isCb);
+      const claim = await env.DB.prepare("SELECT admin_uid, claimed_at FROM telegram_request_claims WHERE request_id = ?").bind(requestId).first();
+      const status = String(req.status || 'Pending');
+      const location = [req.hospital_name, req.district, req.thana, req.location].filter(Boolean).map(escapeHtml).join(', ');
+      const text = `🧾 <b>রিকোয়েস্ট #${req.id} বিস্তারিত</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `👤 রোগী: <b>${escapeHtml(req.patient_name)}</b>\n🩸 রক্ত: <code>${escapeHtml(req.blood_group)}</code> • ${req.units || 1} ব্যাগ\n` +
+        `🚨 Priority: <b>${escapeHtml(req.urgency || 'Urgent')}</b>\n📍 ${location}\n⏰ ${escapeHtml(req.needed_by)}\n` +
+        `📞 <code>${escapeHtml(req.contact_phone)}</code>\n📌 Status: <b>${escapeHtml(status)}</b>\n` +
+        `👤 Assigned: <b>${claim ? escapeHtml(claim.admin_uid) : 'কেউ নয়'}</b>${claim?.claimed_at ? `\n🕒 Claimed: ${escapeHtml(claim.claimed_at)}` : ''}` +
+        (req.note ? `\n📝 Note: ${escapeHtml(req.note)}` : '');
+      const kb = [
+        [{ text: '🩸 Matching donors', callback_data: `cb:req:${req.id}:view` }],
+        claim?.admin_uid === String(adminUid) ? [{ text: '🔓 Claim release', callback_data: `cb:req:${req.id}:unclaim` }] : [{ text: claim ? `👤 Claimed by ${claim.admin_uid}` : '🙋 এই case claim করুন', callback_data: `cb:req:${req.id}:claim` }],
+        [{ text: status === 'Pending' ? '✅ Matched করুন' : '✅ Fulfilled করুন', callback_data: `cb:req:${req.id}:${status === 'Pending' ? 'Matched' : 'Fulfilled'}` }, { text: '🚫 Closed', callback_data: `cb:req:${req.id}:Closed` }],
+        [{ text: '📋 Pending তালিকা', callback_data: 'cb:pending' }, { text: '🔙 মূল মেনু', callback_data: 'cb:menu' }]
+      ];
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
+    };
+
     const renderGroups = async (targetChatId, targetMsgId, isCb) => {
       const text = "🩸 <b>কোন গ্রুপের ডোনারদের তথ্য দেখতে চান নির্বাচন করুন:</b>";
       const kb = [
@@ -541,18 +610,23 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
 
-    const renderPending = async (targetChatId, targetMsgId, isCb) => {
+    const renderPending = async (targetChatId, targetMsgId, isCb, adminUid = targetChatId) => {
       const { results } = await env.DB.prepare(
-        "SELECT id, patient_name, blood_group, units, hospital_name, district, needed_by, status FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched') ORDER BY id DESC LIMIT 8"
+        "SELECT id, patient_name, blood_group, units, hospital_name, district, thana, needed_by, urgency, status, created_at FROM blood_requests WHERE LOWER(status) IN ('pending', 'matched') ORDER BY CASE WHEN LOWER(COALESCE(urgency, 'urgent')) = 'urgent' THEN 0 ELSE 1 END, id DESC LIMIT 8"
       ).all();
       const rows = results || [];
+      const claims = rows.length ? await env.DB.prepare(`SELECT request_id, admin_uid FROM telegram_request_claims WHERE request_id IN (${rows.map(() => '?').join(',')})`).bind(...rows.map(r => r.id)).all() : { results: [] };
+      const claimMap = new Map((claims.results || []).map(c => [Number(c.request_id), c.admin_uid]));
       let text = "📋 <b>অপেক্ষমাণ রক্তের রিকোয়েস্ট</b>\n────────────────────\n";
       if (!rows.length) text += "✅ এখন কোনো Pending বা Matched রিকোয়েস্ট নেই।";
-      else text += rows.map((r, i) => `${i + 1}. <b>#${r.id} ${escapeHtml(r.blood_group)}</b> — ${escapeHtml(r.patient_name)}\n   🏥 ${escapeHtml(r.hospital_name)}, ${escapeHtml(r.district)} | ${escapeHtml(r.status)}`).join("\n\n");
-      const kb = rows.flatMap(r => [[
-        { text: `#${r.id} ডোনার দেখুন`, callback_data: `cb:req:${r.id}:view` },
-        { text: `✅ ${r.status === 'Matched' ? 'Fulfilled' : 'Matched'}`, callback_data: `cb:req:${r.id}:${r.status === 'Matched' ? 'Fulfilled' : 'Matched'}` }
-      ]]);
+      else text += rows.map((r, i) => `${i + 1}. ${String(r.urgency || 'Urgent').toLowerCase() === 'urgent' ? '🚨' : '🟡'} <b>#${r.id} ${escapeHtml(r.blood_group)}</b> — ${escapeHtml(r.patient_name)}\n   🏥 ${escapeHtml(r.hospital_name)}, ${escapeHtml(r.district)}${r.thana ? `, ${escapeHtml(r.thana)}` : ''}\n   📌 ${escapeHtml(r.status)} • ${escapeHtml(r.needed_by)} • ${claimMap.has(Number(r.id)) ? `👤 ${escapeHtml(claimMap.get(Number(r.id)))}` : '🙋 Unassigned'}`).join("\n\n");
+      const kb = rows.flatMap(r => {
+        const claim = claimMap.get(Number(r.id));
+        return [[
+          { text: `#${r.id} বিস্তারিত`, callback_data: `cb:req:${r.id}:details` },
+          { text: claim ? `👤 ${claim === String(adminUid) ? 'আমার claim' : 'Claimed'}` : '🙋 Claim', callback_data: claim ? `cb:req:${r.id}:details` : `cb:req:${r.id}:claim` }
+        ]];
+      });
       kb.push([{ text: "🔄 রিফ্রেশ", callback_data: "cb:pending" }, { text: "🔙 মূল মেনু", callback_data: "cb:menu" }]);
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, kb, isCb);
     };
@@ -615,7 +689,17 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       await tgAnswerCallback(token, cq.id);
 
       if (data === "cb:pending") {
-        await renderPending(chatId, messageId, true);
+        await renderPending(chatId, messageId, true, fromId);
+        return;
+      }
+
+      if (data === "cb:ops") {
+        await renderOperations(chatId, messageId, true);
+        return;
+      }
+
+      if (data === "cb:audit") {
+        await renderAudit(chatId, messageId, true);
         return;
       }
 
@@ -638,11 +722,33 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
           await renderMatches(chatId, messageId, requestId, true, matchPage);
           return;
         }
+        if (action === "details") {
+          await renderRequestDetails(chatId, messageId, requestId, fromId, true);
+          return;
+        }
+        if (action === "claim") {
+          const claim = await env.DB.prepare("INSERT OR IGNORE INTO telegram_request_claims (request_id, admin_uid) VALUES (?, ?)").bind(requestId, fromId).run();
+          if (claim?.meta?.changes > 0) {
+            await recordTelegramAudit(env, fromId, 'CLAIM_REQUEST', 'blood_request', requestId, 'Request claimed from Telegram');
+            await renderRequestDetails(chatId, messageId, requestId, fromId, true);
+          } else {
+            await tgSendOrEdit(token, chatId, messageId, '👤 এই case ইতিমধ্যে অন্য একজন admin claim করেছেন।', [[{ text: '🧾 Details দেখুন', callback_data: `cb:req:${requestId}:details` }], [{ text: '📋 Pending তালিকা', callback_data: 'cb:pending' }]], true);
+          }
+          return;
+        }
+        if (action === "unclaim") {
+          const released = await env.DB.prepare("DELETE FROM telegram_request_claims WHERE request_id = ? AND admin_uid = ?").bind(requestId, fromId).run();
+          if (released?.meta?.changes > 0) await recordTelegramAudit(env, fromId, 'RELEASE_REQUEST', 'blood_request', requestId, 'Request claim released');
+          await renderRequestDetails(chatId, messageId, requestId, fromId, true);
+          return;
+        }
         const allowed = new Set(["Matched", "Fulfilled", "Closed"]);
         if (allowed.has(action)) {
+          const previous = await env.DB.prepare("SELECT status FROM blood_requests WHERE id = ?").bind(requestId).first();
           await env.DB.prepare("UPDATE blood_requests SET status = ? WHERE id = ?").bind(action, requestId).run();
+          await recordTelegramAudit(env, fromId, `STATUS_${action.toUpperCase()}`, 'blood_request', requestId, `${previous?.status || 'unknown'} -> ${action}`);
           if (publicOrigin) invalidatePublicStatsCache(publicOrigin, ctx);
-          await tgSendOrEdit(token, chatId, messageId, `✅ রিকোয়েস্ট <b>#${requestId}</b> এখন <b>${action}</b>।`, [[{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
+          await tgSendOrEdit(token, chatId, messageId, `✅ রিকোয়েস্ট <b>#${requestId}</b> এখন <b>${action}</b>।`, [[{ text: "🧾 Details", callback_data: `cb:req:${requestId}:details` }], [{ text: "📋 Pending তালিকা", callback_data: "cb:pending" }, { text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
           return;
         }
       }
@@ -667,6 +773,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         const nextDate = nextAvailable.toISOString().slice(0, 10);
         const nextDateBn = nextAvailable.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
         await env.DB.prepare("UPDATE donors SET total_donations = COALESCE(total_donations, 0) + 1, last_donation_date = date('now'), next_available_date = ?, is_available = 0, updated_at = datetime('now') WHERE id = ?").bind(nextDate, donorId).run();
+        await recordTelegramAudit(env, fromId, 'DONATION_COMPLETE', 'donor', donorId, `${donor.name} • ${donor.blood_group} • ${months} months unavailable`);
         if (publicOrigin) invalidatePublicStatsCache(publicOrigin, ctx);
         await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
         await tgSendOrEdit(token, chatId, messageId, `✅ <b>রক্তদান সম্পন্ন হিসেবে সংরক্ষণ হয়েছে</b>\n\n👤 ${escapeHtml(donor.name)} (${escapeHtml(donor.blood_group)})\n📅 আজকের ডোনেশন যোগ হয়েছে\n⏸️ ${months} মাসের জন্য আন-অ্যাভেইলেবল\n🟢 আবার রক্ত দিতে পারবেন: <b>${nextDateBn}</b>`, [[{ text: "💉 আরেকজনের ডোনেশন মার্ক করুন", callback_data: "cb:mark_donation" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]], true);
@@ -773,13 +880,18 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         return;
       }
 
+      if (text.includes("অপারেশন") || text.includes("ড্যাশবোর্ড")) {
+        await renderOperations(chatId, null, false);
+        return;
+      }
+
       if (text === "/stats" || text.includes("পরিসংখ্যান")) {
         await renderStats(chatId, null, false);
         return;
       }
 
       if (text.includes("পেন্ডিং")) {
-        await renderPending(chatId, null, false);
+        await renderPending(chatId, null, false, fromId);
         return;
       }
 
