@@ -215,6 +215,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const safeNeed = escapeHtml(requestData.needed_by);
     const safeHemoglobin = requestData.hemoglobin_unknown ? "জানা নেই" : escapeHtml(requestData.hemoglobin || "তথ্য নেই");
     const safeReq = escapeHtml(requestData.requester_name || "স্বজন");
+    const safeReqAddress = escapeHtml(requestData.requester_current_address);
     const safeNote = escapeHtml(requestData.note);
     const units = requestData.units || 1;
 
@@ -245,6 +246,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       `⏰ <b>প্রয়োজনের সময়:</b> ${safeNeed}\n` +
       `────────────────────────────\n` +
       `🤝 <b>আবেদনকারী:</b> ${safeReq} (📞 <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>)\n` +
+      (safeReqAddress ? `🏠 <b>আবেদনকারীর বর্তমান ঠিকানা:</b> ${safeReqAddress}\n` : "") +
       (safeNote ? `📝 <b>নোট:</b> ${safeNote}\n` : "") +
       `────────────────────────────\n` +
       `📲 <b>আবেদনকারীর সাথে সরাসরি চ্যাট:</b> <a href="${waPatientUrl}"><b>WhatsApp ওপেন করুন</b></a>\n` +
@@ -360,7 +362,8 @@ async function ensureOptionalFields(env) {
     optionalFieldsReady = Promise.all([
       addColumn("ALTER TABLE donors ADD COLUMN current_address TEXT NOT NULL DEFAULT ''"),
       addColumn("ALTER TABLE blood_requests ADD COLUMN hemoglobin TEXT"),
-      addColumn("ALTER TABLE blood_requests ADD COLUMN hemoglobin_unknown INTEGER NOT NULL DEFAULT 0")
+      addColumn("ALTER TABLE blood_requests ADD COLUMN hemoglobin_unknown INTEGER NOT NULL DEFAULT 0"),
+      addColumn("ALTER TABLE blood_requests ADD COLUMN requester_current_address TEXT")
     ]).catch(error => { optionalFieldsReady = null; throw error; });
   }
   return optionalFieldsReady;
@@ -596,7 +599,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
     };
 
     const renderRequestDetails = async (targetChatId, targetMsgId, requestId, adminUid, isCb) => {
-      const req = await env.DB.prepare("SELECT id, patient_name, blood_group, units, hospital_name, district, thana, location, contact_phone, urgency, needed_by, note, status, hemoglobin, hemoglobin_unknown, created_at FROM blood_requests WHERE id = ?").bind(requestId).first();
+      const req = await env.DB.prepare("SELECT id, patient_name, blood_group, units, hospital_name, district, thana, location, contact_phone, urgency, needed_by, note, status, requester_name, requester_current_address, hemoglobin, hemoglobin_unknown, created_at FROM blood_requests WHERE id = ?").bind(requestId).first();
       if (!req) return tgSendOrEdit(token, targetChatId, targetMsgId, '❌ রিকোয়েস্টটি পাওয়া যায়নি।', [[{ text: '📋 Pending তালিকা', callback_data: 'cb:pending' }]], isCb);
       const claim = await env.DB.prepare("SELECT admin_uid, claimed_at FROM telegram_request_claims WHERE request_id = ?").bind(requestId).first();
       const status = String(req.status || 'Pending');
@@ -604,7 +607,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const text = `🧾 <b>রিকোয়েস্ট #${req.id} বিস্তারিত</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
         `👤 রোগী: <b>${escapeHtml(req.patient_name)}</b>\n🩸 রক্ত: <code>${escapeHtml(req.blood_group)}</code> • ${req.units || 1} ব্যাগ\n` +
         `🚨 Priority: <b>${escapeHtml(req.urgency || 'Urgent')}</b>\n📍 ${location}\n⏰ ${escapeHtml(req.needed_by)}\n` +
-        `📞 <code>${escapeHtml(req.contact_phone)}</code>\n🧪 হিমোগ্লোবিন: <b>${req.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(req.hemoglobin || 'তথ্য নেই')}</b>\n📌 Status: <b>${escapeHtml(status)}</b>\n` +
+        `📞 <code>${escapeHtml(req.contact_phone)}</code>\n👤 আবেদনকারী: ${escapeHtml(req.requester_name || 'স্বজন')}\n🏠 বর্তমান ঠিকানা: ${escapeHtml(req.requester_current_address || 'তথ্য নেই')}\n🧪 হিমোগ্লোবিন: <b>${req.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(req.hemoglobin || 'তথ্য নেই')}</b>\n📌 Status: <b>${escapeHtml(status)}</b>\n` +
         `👤 Assigned: <b>${claim ? escapeHtml(claim.admin_uid) : 'কেউ নয়'}</b>${claim?.claimed_at ? `\n🕒 Claimed: ${escapeHtml(claim.claimed_at)}` : ''}` +
         (req.note ? `\n📝 Note: ${escapeHtml(req.note)}` : '');
       const kb = [
@@ -1166,7 +1169,9 @@ export async function onRequest(context) {
           const {
             patient_name, blood_group, units, district, thana, needed_by,
             hospital_name, location, note, contact_phone, urgency,
-            requester_name, requester_blood_group, hemoglobin, hemoglobin_unknown,
+            requester_name, requester_blood_group, requester_age, requester_gender,
+            requester_district, requester_area, requester_current_address,
+            hemoglobin, hemoglobin_unknown,
             captcha_token, captcha_answer, agreed_future_donation, agreed_data_save
           } = body;
 
@@ -1176,7 +1181,8 @@ export async function onRequest(context) {
 
           const normalizedHemoglobin = String(hemoglobin || '').trim().slice(0, 30);
           const isHemoglobinUnknown = Number(hemoglobin_unknown) === 1 || hemoglobin_unknown === true;
-          if (!patient_name || !blood_group || !district || !needed_by || !hospital_name || !contact_phone || (!normalizedHemoglobin && !isHemoglobinUnknown)) {
+          const normalizedRequesterAddress = String(requester_current_address || '').trim().slice(0, 300);
+          if (!patient_name || !blood_group || !district || !needed_by || !hospital_name || !contact_phone || !String(requester_name || '').trim() || !requester_blood_group || !requester_district || !requester_area || !normalizedRequesterAddress || (!normalizedHemoglobin && !isHemoglobinUnknown)) {
             return json({ error: "রোগী ও হাসপাতালের সকল প্রয়োজনীয় তথ্য পূরণ করুন।" }, 400);
           }
 
@@ -1196,12 +1202,37 @@ export async function onRequest(context) {
             }, 429);
           }
 
+          const requesterName = String(requester_name || '').trim().slice(0, 120);
+          const requesterBloodGroup = String(requester_blood_group || '').trim().toUpperCase();
+          const requesterDistrict = String(requester_district || district || 'রংপুর').trim().slice(0, 120);
+          const requesterArea = String(requester_area || '').trim().slice(0, 120);
+          const requesterGender = ['Male', 'Female', 'Other'].includes(requester_gender) ? requester_gender : 'Male';
+          const requesterAge = Math.min(65, Math.max(18, parseInt(requester_age, 10) || 25));
+
+          await env.DB.prepare(`
+            INSERT OR IGNORE INTO donors (
+              name, blood_group, phone, district, thana, area, current_address,
+              age, gender, last_donation_date, total_donations, is_available, is_active,
+              agreed_future_donation, agreed_data_save
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 1, 1, 1, 1)
+          `).bind(
+            requesterName,
+            requesterBloodGroup,
+            cleanPhone,
+            requesterDistrict,
+            requesterArea,
+            requesterArea,
+            normalizedRequesterAddress,
+            requesterAge,
+            requesterGender
+          ).run();
+
           const insertReqStmt = env.DB.prepare(`
             INSERT INTO blood_requests (
               patient_name, blood_group, units, district, thana, hospital_name,
               location, contact_phone, urgency, needed_by, note, requester_name,
-              status, requester_blood_group, hemoglobin, hemoglobin_unknown
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?)
+              status, requester_blood_group, requester_current_address, hemoglobin, hemoglobin_unknown
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?)
           `);
 
           const reqInsertRes = await insertReqStmt.bind(
@@ -1216,8 +1247,9 @@ export async function onRequest(context) {
             urgency || "Urgent",
             needed_by.trim(),
             note ? note.trim() : "",
-            (requester_name || "").trim(),
-            (requester_blood_group || "").trim() || null,
+            requesterName,
+            requesterBloodGroup || null,
+            normalizedRequesterAddress,
             isHemoglobinUnknown ? null : normalizedHemoglobin,
             isHemoglobinUnknown ? 1 : 0
           ).run();
@@ -1249,8 +1281,9 @@ export async function onRequest(context) {
             location: location || "",
             thana: reqThana,
             needed_by: needed_by.trim(),
-            requester_name: requester_name || "স্বজন",
+            requester_name: requesterName || "স্বজন",
             contact_phone: cleanPhone,
+            requester_current_address: normalizedRequesterAddress,
             note: note || "",
             hemoglobin: isHemoglobinUnknown ? null : normalizedHemoglobin,
             hemoglobin_unknown: isHemoglobinUnknown ? 1 : 0

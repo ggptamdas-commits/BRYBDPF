@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS blood_requests (
   agreed_data_save INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   requester_name TEXT,
-  requester_blood_group TEXT
+  requester_blood_group TEXT,
+  requester_current_address TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_req_phone ON blood_requests(contact_phone, created_at);

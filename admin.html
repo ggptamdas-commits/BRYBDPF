@@ -678,6 +678,7 @@
           const safeDistrict = escapeHtml(r.district);
           const safeLocation = escapeHtml(r.location);
           const safeRequesterName = escapeHtml(r.requester_name || "স্বজন");
+          const safeRequesterAddress = escapeHtml(r.requester_current_address || 'ঠিকানা দেওয়া হয়নি');
           const safeContactPhone = escapeHtml(r.contact_phone);
           const safeNeededBy = escapeHtml(r.needed_by);
           const safeNote = escapeHtml(r.note);
@@ -699,6 +700,7 @@
               <td class="py-3 px-4">
                 <div class="font-medium text-gray-800">${safeRequesterName}</div>
                 <div class="text-xs text-gray-500"><a href="tel:${safeContactPhone}" class="text-blue-600 hover:underline"><i class="fa-solid fa-phone text-[10px]"></i> ${safeContactPhone}</a></div>
+                <div class="text-[10px] text-blue-600 mt-1">বর্তমান: ${safeRequesterAddress}</div>
               </td>
               <td class="py-3 px-4 text-xs font-semibold text-gray-700">
                 <div>${safeNeededBy}</div>

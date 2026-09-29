@@ -328,10 +328,15 @@
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1">আবেদনকারীর থানা / এলাকা *</label>
-              <select id="req-applicant-area" required class="w-full h-10 px-2.5 rounded-lg border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-crimson-500">
+              <select id="req-applicant-area" required class="w-full h-10 px-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-xs font-semibold bg-white">
                 <option value="">আগে জেলা নির্বাচন করুন</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-crimson-700 mb-1">আবেদনকারীর বর্তমান ঠিকানা *</label>
+            <textarea id="req-applicant-current-address" required rows="2" placeholder="আপনি বর্তমানে যেখানে থাকেন—প্রবাসে বা অন্য জেলায় থাকলে সেই পূর্ণ ঠিকানা লিখুন" class="w-full p-3 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-crimson-500 bg-white"></textarea>
+            <span class="text-[11px] text-slate-400 mt-0.5 block">এই ঠিকানা আবেদনকারীকে ডোনার তালিকায় যুক্ত করতে ব্যবহার করা হবে</span>
           </div>
         </div>
 
@@ -857,6 +862,7 @@
         requester_gender: document.getElementById('req-applicant-gender').value,
         requester_district: document.getElementById('req-applicant-district').value || patientDist,
         requester_area: document.getElementById('req-applicant-area').value,
+        requester_current_address: document.getElementById('req-applicant-current-address').value.trim(),
         agreed_future_donation: document.getElementById('req-agree-1').checked ? 1 : 0,
         agreed_data_save: document.getElementById('req-agree-2').checked ? 1 : 0,
         captcha_token: document.getElementById('captcha-token').value,
