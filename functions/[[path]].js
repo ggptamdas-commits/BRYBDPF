@@ -172,6 +172,7 @@ async function verifyCaptcha(env, token, userAnswer) {
   if (!token || !userAnswer) return false;
   try {
     const normAns = normalizeDigits(userAnswer).trim();
+    if (!/^\d+$/.test(normAns)) return false;
     const decoded = atob(token);
     const parts = decoded.split(":");
     if (parts.length === 2) {
@@ -182,11 +183,16 @@ async function verifyCaptcha(env, token, userAnswer) {
     }
     if (parts.length === 3) {
       const [correctAnswer, timestamp, sig] = parts;
-      const timeDiff = Date.now() - parseInt(timestamp, 10);
-      if (isNaN(timeDiff) || timeDiff < 0 || timeDiff > 10 * 60 * 1000) return false;
+      let issuedAt = Number(timestamp);
+      // Accept both millisecond and second timestamps for compatibility with
+      // tokens created by older deployments, while allowing enough time for a
+      // user to complete a long blood-request form.
+      if (issuedAt > 0 && issuedAt < 10_000_000_000) issuedAt *= 1000;
+      const timeDiff = Date.now() - issuedAt;
+      if (!Number.isFinite(timeDiff) || timeDiff < -60_000 || timeDiff > 30 * 60 * 1000) return false;
       const secret = env.CAPTCHA_SECRET || DEFAULT_CAPTCHA_SECRET;
-    if (!secret) return false;
-    const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${secret}`);
+      if (!secret) return false;
+      const expectedSig = await sha256Hex(`${correctAnswer}:${timestamp}:${secret}`);
       if (sig !== expectedSig) return false;
       return normAns === correctAnswer.trim();
     }

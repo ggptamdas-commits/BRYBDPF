@@ -779,14 +779,20 @@
     const captchaCache = new Map();
     async function loadCaptchaFor(formKey, questionId, tokenId, answerId, fallback, force = false) {
       const cached = captchaCache.get(formKey);
-      if (!force && cached && Date.now() - cached.savedAt < 7 * 60 * 1000) {
+      if (!force && cached && Date.now() - cached.savedAt < 5 * 60 * 1000) {
         document.getElementById(questionId).textContent = cached.data.question;
         document.getElementById(tokenId).value = cached.data.token;
         document.getElementById(answerId).value = '';
         return cached.data;
       }
       if (captchaInflight.has(formKey) && !force) return captchaInflight.get(formKey);
-      const promise = fetch('/api/captcha', { headers: { Accept: 'application/json' } })
+      if (force) {
+        captchaCache.delete(formKey);
+        document.getElementById(tokenId).value = '';
+        document.getElementById(answerId).value = '';
+        document.getElementById(questionId).textContent = 'নতুন ক্যাপচা লোড হচ্ছে...';
+      }
+      const promise = fetch(`/api/captcha?fresh=${Date.now()}`, { cache: 'no-store', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } })
         .then(async res => { if (!res.ok) throw new Error(`captcha-${res.status}`); return res.json(); })
         .then(data => {
           captchaCache.set(formKey, { savedAt: Date.now(), data });
@@ -796,7 +802,7 @@
           return data;
         })
         .catch(() => { document.getElementById(questionId).textContent = fallback; return null; })
-        .finally(() => captchaInflight.delete(formKey));
+        .finally(() => { if (captchaInflight.get(formKey) === promise) captchaInflight.delete(formKey); });
       captchaInflight.set(formKey, promise);
       return promise;
     }
