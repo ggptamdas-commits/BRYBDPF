@@ -2,6 +2,16 @@ import { Resvg, initWasm } from '@resvg/resvg-wasm';
 import wasmModule from '@resvg/resvg-wasm/index_bg.wasm';
 import { NOTO_BENGALI_FONT } from '../assets/noto-bengali-font.js';
 import { NOTO_LATIN_FONT } from '../assets/noto-latin-font.js';
+import * as hb from '../assets/harfbuzz-shim.js';
+
+const posterHbBlob = new hb.Blob(NOTO_BENGALI_FONT);
+const posterHbFace = new hb.Face(posterHbBlob);
+const posterHbFont = new hb.Font(posterHbFace);
+const posterHbUpem = posterHbFace.upem || 1000;
+const posterLatinBlob = new hb.Blob(NOTO_LATIN_FONT);
+const posterLatinFace = new hb.Face(posterLatinBlob);
+const posterLatinFont = new hb.Font(posterLatinFace);
+const posterLatinUpem = posterLatinFace.upem || 1000;
 
 let posterRendererReady = null;
 async function renderBloodRequestPosterPng(svg) {
@@ -9,8 +19,7 @@ async function renderBloodRequestPosterPng(svg) {
   await posterRendererReady;
   const renderer = new Resvg(svg, {
     background: '#ffffff',
-    // OptimizeSpeed avoids the geometric-precision path that can place
-    // Bengali combining marks too tightly in Telegram's rasterized poster.
+    // All visible poster text is already converted to shaped glyph paths below.
     textRendering: 0,
     font: {
       fontBuffers: [NOTO_BENGALI_FONT, NOTO_LATIN_FONT],
@@ -467,7 +476,38 @@ function escapeXml(str) {
 
 function posterText(value, fallback = 'তথ্য দেওয়া হয়নি') {
   const text = String(value ?? '').trim();
-  return escapeXml(text || fallback);
+  return text || fallback;
+}
+
+function shapedPosterText(value, x, baseline, size, fill, anchor = 'start', maxWidth = Infinity) {
+  const text = String(value ?? '');
+  if (!text) return '';
+  const isBengali = /[\u0980-\u09FF]/.test(text);
+  const shapeFont = isBengali ? posterHbFont : posterLatinFont;
+  const shapeUpem = isBengali ? posterHbUpem : posterLatinUpem;
+  const buffer = new hb.Buffer();
+  buffer.addText(text);
+  buffer.guessSegmentProperties();
+  hb.shape(shapeFont, buffer);
+  const glyphs = buffer.getGlyphInfos();
+  const positions = buffer.getGlyphPositions();
+  const scale = size / shapeUpem;
+  const totalWidth = positions.reduce((sum, p) => sum + p.xAdvance, 0) * scale;
+  const fitScale = Number.isFinite(maxWidth) && totalWidth > maxWidth ? maxWidth / totalWidth : 1;
+  const glyphScale = scale * fitScale;
+  let cursor = anchor === 'middle' ? x - totalWidth * fitScale / 2 : x;
+  let paths = '';
+  for (let i = 0; i < glyphs.length; i++) {
+    const position = positions[i];
+    const path = shapeFont.glyphToPath(glyphs[i].codepoint);
+    if (path) {
+      const gx = cursor + position.xOffset * glyphScale;
+      const gy = baseline - position.yOffset * glyphScale;
+      paths += `<path d="${path}" transform="translate(${gx.toFixed(2)} ${gy.toFixed(2)}) scale(${glyphScale.toFixed(5)} ${(-glyphScale).toFixed(5)})" fill="${fill}"/>`;
+    }
+    cursor += position.xAdvance * glyphScale;
+  }
+  return `<g aria-label="${escapeXml(text)}">${paths}</g>`;
 }
 
 function buildBloodRequestPosterSvg(data) {
@@ -486,25 +526,25 @@ function buildBloodRequestPosterSvg(data) {
     ['যোগাযোগের মোবাইল নম্বর', posterText(data.contact_phone)]
   ];
   const rows = fields.map(([label, value], index) => {
-    const y = 420 + index * 78;
-    return `<text x="58" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="455" y="${y - 43}" width="575" height="64" rx="14" class="field"/><text x="480" y="${y - 1}" class="value">${value}</text>`;
+    const y = 426 + index * 75;
+    return `<rect x="50" y="${y - 47}" width="1100" height="62" rx="14" class="field"/>${shapedPosterText(`${index + 1}. ${label}:`, 72, y - 8, 25, '#0b2b55', 'start', 365)}${shapedPosterText(value, 478, y - 8, 34, '#172554', 'start', 640)}`;
   }).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
     <rect width="1200" height="1500" fill="#ffffff"/>
     <rect x="0" y="0" width="1200" height="20" fill="#0b2b55"/><rect x="0" y="20" width="1200" height="20" fill="#d90429"/>
-    <text x="600" y="104" text-anchor="middle" class="brand">BRYBDPF</text>
-    <text x="600" y="158" text-anchor="middle" class="brandBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text>
-    <text x="600" y="194" text-anchor="middle" class="brandSub">জরুরি রক্ত সহায়তা • মানবতার পাশে</text>
+    ${shapedPosterText('BRYBDPF', 600, 104, 86, '#0b2b55', 'middle', 600)}
+    ${shapedPosterText('রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক', 600, 158, 46, '#d90429', 'middle', 900)}
+    ${shapedPosterText('জরুরি রক্ত সহায়তা — মানবতার পাশে', 600, 194, 27, '#0b2b55', 'middle', 900)}
     <path d="M88 228 H1112" stroke="#0b2b55" stroke-width="6"/><path d="M88 238 H1112" stroke="#d90429" stroke-width="3"/>
     <g transform="translate(1010 68)"><path d="M0 0 C-44 55 -57 81 -57 111 A57 57 0 0 0 57 111 C57 81 44 55 0 0Z" fill="#d90429"/><path d="M-31 103 C-31 78 -15 65 0 77 C15 65 31 78 31 103" fill="none" stroke="#fff" stroke-width="7"/><path d="M-25 101 H-10 L0 82 L10 112 L20 96 H33" fill="none" stroke="#fff" stroke-width="5"/></g>
     <rect x="76" y="270" width="1048" height="112" rx="28" fill="#d90429" stroke="#8f1235" stroke-width="8"/>
     <rect x="92" y="286" width="1016" height="80" rx="18" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/>
-    <text x="600" y="345" text-anchor="middle" class="title">জরুরি রক্তের প্রয়োজন</text>
-    <text x="600" y="402" text-anchor="middle" class="sectionHint">রোগীর তথ্য ও যোগাযোগের তথ্য</text>
+    ${shapedPosterText('জরুরি রক্তের প্রয়োজন', 600, 345, 64, '#ffffff', 'middle', 900)}
+    ${shapedPosterText('রোগীর তথ্য ও যোগাযোগের তথ্য', 600, 402, 29, '#0b2b55', 'middle', 900)}
     ${rows}
     <path d="M70 1370 H1130" stroke="#0b2b55" stroke-width="7"/><path d="M70 1382 H1130" stroke="#d90429" stroke-width="3"/>
-    <text x="600" y="1430" text-anchor="middle" class="footer">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text>
-    <text x="600" y="1470" text-anchor="middle" class="url">BRYBDPF • brybdpf.pages.dev</text>
+    ${shapedPosterText('রক্তদানে এগিয়ে আসুন — জীবন বাঁচান', 600, 1430, 36, '#d90429', 'middle', 1000)}
+    ${shapedPosterText('BRYBDPF • brybdpf.pages.dev', 600, 1470, 22, '#0b2b55', 'middle', 1000)}
     <style>
       .brand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55;letter-spacing:6px}.brandBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;font-weight:400;fill:#d90429}.brandSub{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;font-weight:400;fill:#0b2b55}.title{font-family:'Noto Sans Bengali',sans-serif;font-size:64px;font-weight:400;fill:#fff}.sectionHint{font-family:'Noto Sans Bengali',sans-serif;font-size:29px;font-weight:400;fill:#0b2b55}.label{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;font-weight:400;fill:#0b2b55}.field{fill:#fff;stroke:#475569;stroke-width:3}.value{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;font-weight:400;fill:#172554}.footer{font-family:'Noto Sans Bengali',sans-serif;font-size:36px;font-weight:400;fill:#d90429}.url{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}
     </style>

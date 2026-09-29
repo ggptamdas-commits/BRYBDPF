@@ -17,6 +17,7 @@
   "author": "ggptamdas",
   "license": "MIT",
   "dependencies": {
-    "@resvg/resvg-wasm": "^2.6.2"
+    "@resvg/resvg-wasm": "^2.6.2",
+    "harfbuzzjs": "^1.6.2"
   }
 }
