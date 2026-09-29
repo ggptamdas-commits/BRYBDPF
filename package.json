@@ -15,5 +15,8 @@
     "telegram-bot"
   ],
   "author": "ggptamdas",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2"
+  }
 }

@@ -1,4 +1,6 @@
 
+node_modules/
+
 android-apk/.keystore-password
 android-apk/KEYSTORE_INFO.txt
 android-apk/android.keystore

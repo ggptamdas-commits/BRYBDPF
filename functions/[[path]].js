@@ -1,3 +1,27 @@
+import { Resvg, initWasm } from '@resvg/resvg-wasm';
+import wasmModule from '@resvg/resvg-wasm/index_bg.wasm';
+import { NOTO_BENGALI_FONT } from '../assets/noto-bengali-font.js';
+import { NOTO_LATIN_FONT } from '../assets/noto-latin-font.js';
+
+let posterRendererReady = null;
+async function renderBloodRequestPosterPng(svg) {
+  if (!posterRendererReady) posterRendererReady = initWasm(wasmModule);
+  await posterRendererReady;
+  const renderer = new Resvg(svg, {
+    background: '#ffffff',
+    textRendering: 2,
+    font: {
+      fontBuffers: [NOTO_BENGALI_FONT, NOTO_LATIN_FONT],
+      defaultFontFamily: 'Noto Sans Bengali',
+      sansSerifFamily: 'Noto Sans Bengali'
+    }
+  });
+  const image = renderer.render();
+  const png = image.asPng();
+  image.free();
+  renderer.free();
+  return png;
+}
 
 function publicStatsCacheKey(origin) {
   return new Request(`${origin}/api/stats?edge-cache=v2`);
@@ -258,6 +282,14 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       [{ text: "💬 আবেদনকারীকে WhatsApp বার্তা", url: waPatientUrl }]
     ];
 
+    let posterPng = null;
+    try {
+      // 1200x1500 (4:5) is a Facebook-ready portrait post size.
+      posterPng = await renderBloodRequestPosterPng(buildBloodRequestPosterSvg(requestData));
+    } catch (posterRenderError) {
+      console.error('Blood request poster PNG render failed:', posterRenderError);
+    }
+
     for (const uid of uids) {
       try {
         const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -288,10 +320,12 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
 
         // Keep the original text alert, then add a clean poster containing only
         // patient details plus the applicant name and phone number.
-        const posterRes = await sendBloodRequestPoster(token, uid, requestData);
-        if (!posterRes.ok) {
-          const posterError = await posterRes.json().catch(() => ({}));
-          console.error(`Telegram poster send to ${uid} failed:`, posterError);
+        if (posterPng) {
+          const posterRes = await sendBloodRequestPoster(token, uid, requestData, posterPng);
+          if (!posterRes.ok) {
+            const posterError = await posterRes.json().catch(() => ({}));
+            console.error(`Telegram poster send to ${uid} failed:`, posterError);
+          }
         }
       } catch (sendErr) {
         console.error(`Error sending to uid ${uid}:`, sendErr);
@@ -447,8 +481,9 @@ function buildBloodRequestPosterSvg(data) {
     const y = 430 + index * 82;
     return `<text x="90" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="430" y="${y - 38}" width="570" height="56" rx="12" class="field"/><text x="455" y="${y - 3}" class="value">${value}</text>`;
   }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1500" viewBox="0 0 1080 1500">
-    <rect width="1080" height="1500" fill="#ffffff"/>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
+    <rect width="1200" height="1500" fill="#ffffff"/>
+    <g transform="translate(60 0) scale(1.111111 1)">
     <rect x="0" y="0" width="1080" height="16" fill="#0b2b55"/><rect x="0" y="16" width="1080" height="18" fill="#d90429"/>
     <text x="540" y="105" text-anchor="middle" class="brand">BRYBDPF</text>
     <text x="540" y="155" text-anchor="middle" class="brandBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text>
@@ -459,18 +494,19 @@ function buildBloodRequestPosterSvg(data) {
     <line x1="80" y1="1390" x2="1000" y2="1390" stroke="#0b2b55" stroke-width="5"/>
     <text x="540" y="1445" text-anchor="middle" class="footer">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text>
     <text x="540" y="1480" text-anchor="middle" class="url">brybdpf.pages.dev</text>
+    </g>
     <style>
       .brand{font:900 66px Arial,sans-serif;fill:#0b2b55;letter-spacing:3px}.brandBn{font:700 30px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#d90429}.title{font:900 48px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#fff}.label{font:700 26px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#0b2b55}.field{fill:#fff;stroke:#64748b;stroke-width:2}.value{font:600 24px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#172554}.footer{font:800 30px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#d90429}.url{font:600 18px Arial,sans-serif;fill:#334155}
     </style>
   </svg>`;
 }
 
-async function sendBloodRequestPoster(token, uid, requestData) {
+async function sendBloodRequestPoster(token, uid, requestData, pngBytes) {
   const form = new FormData();
   form.append('chat_id', uid);
   form.append('caption', '🩸 জরুরি রক্তের আবেদন পোস্টার');
-  form.append('document', new Blob([buildBloodRequestPosterSvg(requestData)], { type: 'image/svg+xml' }), `brybdpf-blood-request-${requestData.id || 'new'}.svg`);
-  return fetch(`https://api.telegram.org/bot${token}/sendDocument`, { method: 'POST', body: form });
+  form.append('photo', new Blob([pngBytes], { type: 'image/png' }), `brybdpf-blood-request-${requestData.id || 'new'}.png`);
+  return fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form });
 }
 
 function parseTelegramAdminUids(value) {
