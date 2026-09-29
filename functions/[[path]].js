@@ -1,50 +1,3 @@
-import { Resvg, initWasm } from '@resvg/resvg-wasm';
-import wasmModule from '@resvg/resvg-wasm/index_bg.wasm';
-import { NOTO_BENGALI_FONT } from '../assets/noto-bengali-font.js';
-import { NOTO_LATIN_FONT } from '../assets/noto-latin-font.js';
-import * as hb from '../assets/harfbuzz-shim.js';
-
-let posterFontsPromise = null;
-let posterHbFont;
-let posterHbUpem;
-let posterLatinFont;
-let posterLatinUpem;
-async function ensurePosterFonts() {
-  if (!posterFontsPromise) {
-    posterFontsPromise = (async () => {
-      await hb.ensureReady();
-      const posterHbFace = new hb.Face(new hb.Blob(NOTO_BENGALI_FONT));
-      posterHbFont = new hb.Font(posterHbFace);
-      posterHbUpem = posterHbFace.upem || 1000;
-      const posterLatinFace = new hb.Face(new hb.Blob(NOTO_LATIN_FONT));
-      posterLatinFont = new hb.Font(posterLatinFace);
-      posterLatinUpem = posterLatinFace.upem || 1000;
-    })();
-  }
-  return posterFontsPromise;
-}
-
-let posterRendererReady = null;
-async function renderBloodRequestPosterPng(svg) {
-  if (!posterRendererReady) posterRendererReady = initWasm(wasmModule);
-  await posterRendererReady;
-  const renderer = new Resvg(svg, {
-    background: '#ffffff',
-    // All visible poster text is already converted to shaped glyph paths below.
-    textRendering: 0,
-    font: {
-      fontBuffers: [NOTO_BENGALI_FONT, NOTO_LATIN_FONT],
-      defaultFontFamily: 'Noto Sans Bengali',
-      sansSerifFamily: 'Noto Sans Bengali'
-    }
-  });
-  const image = renderer.render();
-  const png = image.asPng();
-  image.free();
-  renderer.free();
-  return png;
-}
-
 function publicStatsCacheKey(origin) {
   return new Request(`${origin}/api/stats?edge-cache=v2`);
 }
@@ -99,7 +52,10 @@ function html(content, status = 200) {
       "Access-Control-Allow-Origin": "*",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
-      "Referrer-Policy": "strict-origin-when-cross-origin"
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0"
     }
   });
 }
@@ -225,7 +181,7 @@ async function verifyCaptcha(env, token, userAnswer) {
 }
 
 async function sendTelegramAlert(env, requestData, matchedDonors) {
-  const delivery = { recipients: 0, textSent: 0, posterSent: 0, posterError: null };
+  const delivery = { recipients: 0, textSent: 0 };
   try {
     let token = "";
     let adminUidsStr = "";
@@ -242,18 +198,18 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     if (!token && env.TELEGRAM_BOT_TOKEN) token = env.TELEGRAM_BOT_TOKEN;
     if (!adminUidsStr && env.TELEGRAM_ADMIN_IDS) adminUidsStr = env.TELEGRAM_ADMIN_IDS;
 
-    if (!token || !adminUidsStr) return { ...delivery, posterError: 'Telegram token or admin IDs are not configured.' };
+    if (!token || !adminUidsStr) return delivery;
 
     // Telegram may retry webhook/workerd executions. Claim each request once so one
     // blood request cannot fan out duplicate alerts to every admin.
     if (requestData?.id) {
       await ensureTelegramTables(env);
       const claim = await env.DB.prepare("INSERT OR IGNORE INTO telegram_alert_claims (request_id) VALUES (?)").bind(requestData.id).run();
-      if (!(claim?.meta?.changes > 0)) return;
+      if (!(claim?.meta?.changes > 0)) return delivery;
     }
 
     const uids = parseTelegramAdminUids(adminUidsStr);
-    if (uids.length === 0) return { ...delivery, posterError: 'No valid Telegram admin IDs are configured.' };
+    if (uids.length === 0) return delivery;
     delivery.recipients = uids.length;
 
     const reqCleanPhone = (requestData.contact_phone || "").replace(/[^0-9]/g, "");
@@ -312,19 +268,6 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       [{ text: "💬 আবেদনকারীকে WhatsApp বার্তা", url: waPatientUrl }]
     ];
 
-    let posterPng = null;
-    try {
-      // 1200x1500 (4:5) is a Facebook-ready portrait post size.
-      posterPng = await renderBloodRequestPosterPng(await buildBloodRequestPosterSvg(requestData));
-    } catch (posterRenderError) {
-      console.error('Blood request poster PNG render failed:', posterRenderError);
-      try {
-        posterPng = await renderBloodRequestPosterPng(buildFallbackBloodRequestPosterSvg(requestData));
-      } catch (fallbackError) {
-        delivery.posterError = `Poster generation failed: ${fallbackError?.message || String(fallbackError)}`.slice(0, 500);
-      }
-    }
-
     for (const uid of uids) {
       try {
         const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -342,7 +285,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           console.error(`Telegram send to ${uid} failed:`, errData);
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -351,24 +294,11 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
               disable_web_page_preview: true
             })
           });
+          if (fallbackRes.ok) delivery.textSent += 1;
         } else {
           delivery.textSent += 1;
         }
 
-        // Keep the original text alert, then add a clean poster containing only
-        // patient details plus the applicant name and phone number.
-        if (posterPng) {
-          const posterRes = await sendBloodRequestPoster(token, uid, requestData, posterPng);
-          if (!posterRes.ok) {
-            const posterError = await posterRes.json().catch(() => ({}));
-            console.error(`Telegram poster send to ${uid} failed:`, posterError);
-            delivery.posterError = posterError?.description || `HTTP ${posterRes.status}`;
-          } else {
-            delivery.posterSent += 1;
-          }
-        } else {
-          delivery.posterError = delivery.posterError || 'Poster PNG generation failed before sending.';
-        }
       } catch (sendErr) {
         console.error(`Error sending to uid ${uid}:`, sendErr);
       }
@@ -376,7 +306,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     return delivery;
   } catch (err) {
     console.error("Error sending Telegram alert:", err);
-    return { ...delivery, posterError: err?.message || 'Telegram alert failed.' };
+    return delivery;
   }
 }
 
@@ -499,120 +429,6 @@ function escapeHtml(str) {
 
 function escapeXml(str) {
   return String(str ?? '').replace(/[<>&'\"]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[ch]));
-}
-
-function posterText(value, fallback = 'তথ্য দেওয়া হয়নি') {
-  const text = String(value ?? '').trim();
-  return text || fallback;
-}
-
-function shapedPosterText(value, x, baseline, size, fill, anchor = 'start', maxWidth = Infinity) {
-  const text = String(value ?? '');
-  if (!text) return '';
-  const isBengali = /[\u0980-\u09FF]/.test(text);
-  const shapeFont = isBengali ? posterHbFont : posterLatinFont;
-  const shapeUpem = isBengali ? posterHbUpem : posterLatinUpem;
-  const buffer = new hb.Buffer();
-  buffer.addText(text);
-  buffer.guessSegmentProperties();
-  hb.shape(shapeFont, buffer);
-  const glyphs = buffer.getGlyphInfos();
-  const positions = buffer.getGlyphPositions();
-  const scale = size / shapeUpem;
-  const totalWidth = positions.reduce((sum, p) => sum + p.xAdvance, 0) * scale;
-  const fitScale = Number.isFinite(maxWidth) && totalWidth > maxWidth ? maxWidth / totalWidth : 1;
-  const glyphScale = scale * fitScale;
-  let cursor = anchor === 'middle' ? x - totalWidth * fitScale / 2 : x;
-  let paths = '';
-  for (let i = 0; i < glyphs.length; i++) {
-    const position = positions[i];
-    const path = shapeFont.glyphToPath(glyphs[i].codepoint);
-    if (path) {
-      const gx = cursor + position.xOffset * glyphScale;
-      const gy = baseline - position.yOffset * glyphScale;
-      paths += `<path d="${path}" transform="translate(${gx.toFixed(2)} ${gy.toFixed(2)}) scale(${glyphScale.toFixed(5)} ${(-glyphScale).toFixed(5)})" fill="${fill}"/>`;
-    }
-    cursor += position.xAdvance * glyphScale;
-  }
-  return `<g aria-label="${escapeXml(text)}">${paths}</g>`;
-}
-
-async function buildBloodRequestPosterSvg(data) {
-  await ensurePosterFonts();
-  const fields = [
-    ['রোগীর পুরো নাম', posterText(data.patient_name)],
-    ['রক্তের গ্রুপ', posterText(data.blood_group)],
-    ['রক্তের পরিমাণ (ব্যাগ)', posterText(data.units, '১')],
-    ['হিমোগ্লোবিন', data.hemoglobin_unknown ? 'জানা নেই' : posterText(data.hemoglobin)],
-    ['রক্ত লাগবে', posterText(data.needed_by)],
-    ['চিকিৎসাধীন জেলা', posterText(data.district)],
-    ['হাসপাতালের থানা / এলাকা', posterText(data.thana)],
-    ['হাসপাতালের নাম ও ওয়ার্ড', posterText(data.hospital_name)],
-    ['সুনির্দিষ্ট ঠিকানা / রোড', posterText(data.location)],
-    ['রোগের কারণ / অতিরিক্ত তথ্য', posterText(data.note)],
-    ['আবেদনকারীর পুরো নাম', posterText(data.requester_name, 'স্বজন')],
-    ['যোগাযোগের মোবাইল নম্বর', posterText(data.contact_phone)]
-  ];
-  const rows = fields.map(([label, value], index) => {
-    const y = 426 + index * 75;
-    return `<rect x="50" y="${y - 47}" width="1100" height="62" rx="14" class="field"/>${shapedPosterText(`${index + 1}. ${label}:`, 72, y - 8, 25, '#0b2b55', 'start', 365)}${shapedPosterText(value, 478, y - 8, 34, '#172554', 'start', 640)}`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
-    <rect width="1200" height="1500" fill="#ffffff"/>
-    <rect x="0" y="0" width="1200" height="20" fill="#0b2b55"/><rect x="0" y="20" width="1200" height="20" fill="#d90429"/>
-    ${shapedPosterText('BRYBDPF', 600, 104, 86, '#0b2b55', 'middle', 600)}
-    ${shapedPosterText('রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক', 600, 158, 46, '#d90429', 'middle', 900)}
-    ${shapedPosterText('জরুরি রক্ত সহায়তা — মানবতার পাশে', 600, 194, 27, '#0b2b55', 'middle', 900)}
-    <path d="M88 228 H1112" stroke="#0b2b55" stroke-width="6"/><path d="M88 238 H1112" stroke="#d90429" stroke-width="3"/>
-    <g transform="translate(1010 68)"><path d="M0 0 C-44 55 -57 81 -57 111 A57 57 0 0 0 57 111 C57 81 44 55 0 0Z" fill="#d90429"/><path d="M-31 103 C-31 78 -15 65 0 77 C15 65 31 78 31 103" fill="none" stroke="#fff" stroke-width="7"/><path d="M-25 101 H-10 L0 82 L10 112 L20 96 H33" fill="none" stroke="#fff" stroke-width="5"/></g>
-    <rect x="76" y="270" width="1048" height="112" rx="28" fill="#d90429" stroke="#8f1235" stroke-width="8"/>
-    <rect x="92" y="286" width="1016" height="80" rx="18" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/>
-    ${shapedPosterText('জরুরি রক্তের প্রয়োজন', 600, 345, 64, '#ffffff', 'middle', 900)}
-    ${shapedPosterText('রোগীর তথ্য ও যোগাযোগের তথ্য', 600, 402, 29, '#0b2b55', 'middle', 900)}
-    ${rows}
-    <path d="M70 1370 H1130" stroke="#0b2b55" stroke-width="7"/><path d="M70 1382 H1130" stroke="#d90429" stroke-width="3"/>
-    ${shapedPosterText('রক্তদানে এগিয়ে আসুন — জীবন বাঁচান', 600, 1430, 36, '#d90429', 'middle', 1000)}
-    ${shapedPosterText('BRYBDPF • brybdpf.pages.dev', 600, 1470, 22, '#0b2b55', 'middle', 1000)}
-    <style>
-      .brand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55;letter-spacing:6px}.brandBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;font-weight:400;fill:#d90429}.brandSub{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;font-weight:400;fill:#0b2b55}.title{font-family:'Noto Sans Bengali',sans-serif;font-size:64px;font-weight:400;fill:#fff}.sectionHint{font-family:'Noto Sans Bengali',sans-serif;font-size:29px;font-weight:400;fill:#0b2b55}.label{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;font-weight:400;fill:#0b2b55}.field{fill:#fff;stroke:#475569;stroke-width:3}.value{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;font-weight:400;fill:#172554}.footer{font-family:'Noto Sans Bengali',sans-serif;font-size:36px;font-weight:400;fill:#d90429}.url{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}
-    </style>
-  </svg>`;
-}
-
-function buildFallbackBloodRequestPosterSvg(data) {
-  const fields = [
-    ['রোগীর পুরো নাম', posterText(data.patient_name)],
-    ['রক্তের গ্রুপ', posterText(data.blood_group)],
-    ['রক্তের পরিমাণ (ব্যাগ)', posterText(data.units, '১')],
-    ['হিমোগ্লোবিন', data.hemoglobin_unknown ? 'জানা নেই' : posterText(data.hemoglobin)],
-    ['রক্ত লাগবে', posterText(data.needed_by)],
-    ['চিকিৎসাধীন জেলা', posterText(data.district)],
-    ['হাসপাতালের থানা / এলাকা', posterText(data.thana)],
-    ['হাসপাতালের নাম ও ওয়ার্ড', posterText(data.hospital_name)],
-    ['সুনির্দিষ্ট ঠিকানা / রোড', posterText(data.location)],
-    ['রোগের কারণ / অতিরিক্ত তথ্য', posterText(data.note)],
-    ['আবেদনকারীর পুরো নাম', posterText(data.requester_name, 'স্বজন')],
-    ['যোগাযোগের মোবাইল নম্বর', posterText(data.contact_phone)]
-  ];
-  const rows = fields.map(([label, value], index) => {
-    const y = 426 + index * 75;
-    return `<rect x="50" y="${y - 47}" width="1100" height="62" rx="14" fill="#fff" stroke="#475569" stroke-width="3"/><text x="72" y="${y - 8}" textLength="365" lengthAdjust="spacingAndGlyphs" class="fallbackLabel">${index + 1}. ${escapeXml(label)}:</text><text x="478" y="${y - 8}" textLength="640" lengthAdjust="spacingAndGlyphs" class="fallbackValue">${escapeXml(value)}</text>`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
-    <rect width="1200" height="1500" fill="#fff"/><rect width="1200" height="20" fill="#0b2b55"/><rect y="20" width="1200" height="20" fill="#d90429"/>
-    <text x="600" y="104" text-anchor="middle" class="fallbackBrand">BRYBDPF</text><text x="600" y="158" text-anchor="middle" class="fallbackBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text><text x="600" y="194" text-anchor="middle" class="fallbackSub">জরুরি রক্ত সহায়তা — মানবতার পাশে</text>
-    <path d="M88 228H1112" stroke="#0b2b55" stroke-width="6"/><path d="M88 238H1112" stroke="#d90429" stroke-width="3"/><rect x="76" y="270" width="1048" height="112" rx="28" fill="#d90429" stroke="#8f1235" stroke-width="8"/><text x="600" y="345" text-anchor="middle" class="fallbackTitle">জরুরি রক্তের প্রয়োজন</text><text x="600" y="402" text-anchor="middle" class="fallbackHint">রোগীর তথ্য ও যোগাযোগের তথ্য</text>
-    ${rows}<path d="M70 1370H1130" stroke="#0b2b55" stroke-width="7"/><path d="M70 1382H1130" stroke="#d90429" stroke-width="3"/><text x="600" y="1430" text-anchor="middle" class="fallbackFooter">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text><text x="600" y="1470" text-anchor="middle" class="fallbackUrl">BRYBDPF • brybdpf.pages.dev</text>
-    <style>.fallbackBrand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55}.fallbackBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;fill:#d90429}.fallbackSub,.fallbackHint{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;fill:#0b2b55}.fallbackTitle{font-family:'Noto Sans Bengali',sans-serif;font-size:64px;fill:#fff}.fallbackLabel{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;fill:#0b2b55}.fallbackValue{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;fill:#172554}.fallbackFooter{font-family:'Noto Sans Bengali',sans-serif;font-size:36px;fill:#d90429}.fallbackUrl{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}</style>
-  </svg>`;
-}
-
-async function sendBloodRequestPoster(token, uid, requestData, pngBytes) {
-  const form = new FormData();
-  form.append('chat_id', uid);
-  form.append('caption', '🩸 জরুরি রক্তের আবেদন পোস্টার');
-  form.append('photo', new Blob([pngBytes], { type: 'image/png' }), `brybdpf-blood-request-${requestData.id || 'new'}.png`);
-  return fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form });
 }
 
 function parseTelegramAdminUids(value) {
@@ -1268,8 +1084,11 @@ export async function onRequest(context) {
       }
 
       if (path === "/api/stats" && method === "GET") {
-        const edgeCachedStats = await readPublicStatsCache(url.origin);
-        if (edgeCachedStats) return edgeCachedStats;
+        const bypassEdgeCache = url.searchParams.has('fresh') || request.headers.get('Cache-Control') === 'no-cache';
+        if (!bypassEdgeCache) {
+          const edgeCachedStats = await readPublicStatsCache(url.origin);
+          if (edgeCachedStats) return edgeCachedStats;
+        }
         const [donorsRes, availRes, reqRes, distRes, pendingRes, completedRes] = await Promise.all([
           env.DB.prepare("SELECT count(*) as count FROM donors").first(),
           env.DB.prepare("SELECT count(*) as count FROM donors WHERE (is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1").first(),
@@ -1294,7 +1113,7 @@ export async function onRequest(context) {
           completed_requests: completedRes?.count || 0,
           pending_requests: pendingRes?.count || 0
         }, 200, { 'Cache-Control': 'public, max-age=10, s-maxage=10, stale-while-revalidate=30' });
-        writePublicStatsCache(url.origin, ctx, statsResponse);
+        if (!bypassEdgeCache) writePublicStatsCache(url.origin, ctx, statsResponse);
         return statsResponse;
       }
 
@@ -1709,6 +1528,7 @@ export async function onRequest(context) {
         if (path.startsWith("/api/admin/donors/") && method === "DELETE") {
           const donorId = path.split("/")[4];
           await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(donorId).run();
+          invalidatePublicStatsCache(url.origin, ctx);
           return json({ success: true });
         }
 
@@ -1907,17 +1727,12 @@ export async function onRequest(context) {
             { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", area: "মেডিকেল মোড়", phone: "01711111111" }
           ];
           const delivery = await sendTelegramAlert(env, testRequest, sampleDonors);
-          const posterOk = delivery?.posterSent === testUids.length;
           return json({
-            success: posterOk,
+            success: (delivery?.textSent || 0) > 0,
             recipients: testUids.length,
             text_sent: delivery?.textSent || 0,
-            poster_sent: delivery?.posterSent || 0,
-            poster_error: delivery?.posterError || null,
             webhook_configured: webhookData.ok === true,
-            message: posterOk
-              ? `টেস্ট মেসেজ ও PNG পোস্টার ${testUids.length} জন admin-কে পাঠানো হয়েছে।`
-              : `টেক্সট পাঠানো হয়েছে, কিন্তু PNG পোস্টার পাঠানো যায়নি: ${delivery?.posterError || 'অজানা Telegram error'}`
+            message: `টেলিগ্রাম টেস্ট মেসেজ ${delivery?.textSent || 0} জন admin-কে পাঠানো হয়েছে।`
           });
         }
       }

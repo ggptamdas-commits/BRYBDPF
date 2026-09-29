@@ -393,7 +393,8 @@ export default `<!DOCTYPE html>
         if (Date.now() - cached.savedAt < PUBLIC_STATS_FRESH_MS) return cached.data;
       }
       if (publicStatsPromise) return publicStatsPromise;
-      publicStatsPromise = fetch('/api/stats', { cache: force ? 'no-store' : 'default', headers: { Accept: 'application/json' } })
+      const statsUrl = force ? `/api/stats?fresh=${Date.now()}` : '/api/stats';
+      publicStatsPromise = fetch(statsUrl, { cache: force ? 'no-store' : 'default', headers: { Accept: 'application/json', ...(force ? { 'Cache-Control': 'no-cache' } : {}) } })
         .then(res => res.json())
         .then(d => {
           renderPublicStats(d);
