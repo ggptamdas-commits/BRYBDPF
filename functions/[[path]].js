@@ -484,25 +484,27 @@ function buildBloodRequestPosterSvg(data) {
     ['যোগাযোগের মোবাইল নম্বর', posterText(data.contact_phone)]
   ];
   const rows = fields.map(([label, value], index) => {
-    const y = 430 + index * 82;
-    return `<text x="90" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="430" y="${y - 38}" width="570" height="56" rx="12" class="field"/><text x="455" y="${y - 3}" class="value">${value}</text>`;
+    const y = 420 + index * 78;
+    return `<text x="58" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="414" y="${y - 43}" width="616" height="64" rx="14" class="field"/><text x="440" y="${y - 2}" class="value">${value}</text>`;
   }).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
     <rect width="1200" height="1500" fill="#ffffff"/>
-    <g transform="translate(60 0) scale(1.111111 1)">
-    <rect x="0" y="0" width="1080" height="16" fill="#0b2b55"/><rect x="0" y="16" width="1080" height="18" fill="#d90429"/>
-    <text x="540" y="105" text-anchor="middle" class="brand">BRYBDPF</text>
-    <text x="540" y="155" text-anchor="middle" class="brandBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text>
-    <line x1="110" y1="190" x2="970" y2="190" stroke="#0b2b55" stroke-width="5"/>
-    <rect x="90" y="225" width="900" height="105" rx="28" fill="#d90429" stroke="#9f1239" stroke-width="8"/>
-    <text x="540" y="294" text-anchor="middle" class="title">জরুরি রক্তের প্রয়োজন</text>
+    <rect x="0" y="0" width="1200" height="20" fill="#0b2b55"/><rect x="0" y="20" width="1200" height="20" fill="#d90429"/>
+    <text x="600" y="104" text-anchor="middle" class="brand">BRYBDPF</text>
+    <text x="600" y="158" text-anchor="middle" class="brandBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text>
+    <text x="600" y="194" text-anchor="middle" class="brandSub">জরুরি রক্ত সহায়তা • মানবতার পাশে</text>
+    <path d="M88 228 H1112" stroke="#0b2b55" stroke-width="6"/><path d="M88 238 H1112" stroke="#d90429" stroke-width="3"/>
+    <g transform="translate(1010 68)"><path d="M0 0 C-44 55 -57 81 -57 111 A57 57 0 0 0 57 111 C57 81 44 55 0 0Z" fill="#d90429"/><path d="M-31 103 C-31 78 -15 65 0 77 C15 65 31 78 31 103" fill="none" stroke="#fff" stroke-width="7"/><path d="M-25 101 H-10 L0 82 L10 112 L20 96 H33" fill="none" stroke="#fff" stroke-width="5"/></g>
+    <rect x="76" y="270" width="1048" height="112" rx="28" fill="#d90429" stroke="#8f1235" stroke-width="8"/>
+    <rect x="92" y="286" width="1016" height="80" rx="18" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/>
+    <text x="600" y="345" text-anchor="middle" class="title">জরুরি রক্তের প্রয়োজন</text>
+    <text x="600" y="402" text-anchor="middle" class="sectionHint">রোগীর তথ্য ও যোগাযোগের তথ্য</text>
     ${rows}
-    <line x1="80" y1="1390" x2="1000" y2="1390" stroke="#0b2b55" stroke-width="5"/>
-    <text x="540" y="1445" text-anchor="middle" class="footer">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text>
-    <text x="540" y="1480" text-anchor="middle" class="url">brybdpf.pages.dev</text>
-    </g>
+    <path d="M70 1370 H1130" stroke="#0b2b55" stroke-width="7"/><path d="M70 1382 H1130" stroke="#d90429" stroke-width="3"/>
+    <text x="600" y="1430" text-anchor="middle" class="footer">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text>
+    <text x="600" y="1470" text-anchor="middle" class="url">BRYBDPF • brybdpf.pages.dev</text>
     <style>
-      .brand{font:900 66px Arial,sans-serif;fill:#0b2b55;letter-spacing:3px}.brandBn{font:700 30px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#d90429}.title{font:900 48px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#fff}.label{font:700 26px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#0b2b55}.field{fill:#fff;stroke:#64748b;stroke-width:2}.value{font:600 24px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#172554}.footer{font:800 30px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#d90429}.url{font:600 18px Arial,sans-serif;fill:#334155}
+      .brand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55;letter-spacing:6px}.brandBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;font-weight:900;fill:#d90429}.brandSub{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;font-weight:700;fill:#0b2b55}.title{font-family:'Noto Sans Bengali',sans-serif;font-size:62px;font-weight:900;fill:#fff}.sectionHint{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;font-weight:800;fill:#0b2b55}.label{font-family:'Noto Sans Bengali',sans-serif;font-size:28px;font-weight:800;fill:#0b2b55}.field{fill:#fff;stroke:#475569;stroke-width:3}.value{font-family:'Noto Sans Bengali',sans-serif;font-size:31px;font-weight:700;fill:#172554}.footer{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;font-weight:900;fill:#d90429}.url{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}
     </style>
   </svg>`;
 }
