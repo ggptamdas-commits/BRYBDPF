@@ -9,7 +9,9 @@ async function renderBloodRequestPosterPng(svg) {
   await posterRendererReady;
   const renderer = new Resvg(svg, {
     background: '#ffffff',
-    textRendering: 2,
+    // OptimizeSpeed avoids the geometric-precision path that can place
+    // Bengali combining marks too tightly in Telegram's rasterized poster.
+    textRendering: 0,
     font: {
       fontBuffers: [NOTO_BENGALI_FONT, NOTO_LATIN_FONT],
       defaultFontFamily: 'Noto Sans Bengali',
@@ -485,7 +487,7 @@ function buildBloodRequestPosterSvg(data) {
   ];
   const rows = fields.map(([label, value], index) => {
     const y = 420 + index * 78;
-    return `<text x="58" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="414" y="${y - 43}" width="616" height="64" rx="14" class="field"/><text x="440" y="${y - 2}" class="value">${value}</text>`;
+    return `<text x="58" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="455" y="${y - 43}" width="575" height="64" rx="14" class="field"/><text x="480" y="${y - 1}" class="value">${value}</text>`;
   }).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
     <rect width="1200" height="1500" fill="#ffffff"/>
@@ -504,7 +506,7 @@ function buildBloodRequestPosterSvg(data) {
     <text x="600" y="1430" text-anchor="middle" class="footer">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text>
     <text x="600" y="1470" text-anchor="middle" class="url">BRYBDPF • brybdpf.pages.dev</text>
     <style>
-      .brand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55;letter-spacing:6px}.brandBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;font-weight:900;fill:#d90429}.brandSub{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;font-weight:700;fill:#0b2b55}.title{font-family:'Noto Sans Bengali',sans-serif;font-size:62px;font-weight:900;fill:#fff}.sectionHint{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;font-weight:800;fill:#0b2b55}.label{font-family:'Noto Sans Bengali',sans-serif;font-size:28px;font-weight:800;fill:#0b2b55}.field{fill:#fff;stroke:#475569;stroke-width:3}.value{font-family:'Noto Sans Bengali',sans-serif;font-size:31px;font-weight:700;fill:#172554}.footer{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;font-weight:900;fill:#d90429}.url{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}
+      .brand{font-family:Arial,sans-serif;font-size:86px;font-weight:900;fill:#0b2b55;letter-spacing:6px}.brandBn{font-family:'Noto Sans Bengali',sans-serif;font-size:46px;font-weight:400;fill:#d90429}.brandSub{font-family:'Noto Sans Bengali',sans-serif;font-size:27px;font-weight:400;fill:#0b2b55}.title{font-family:'Noto Sans Bengali',sans-serif;font-size:64px;font-weight:400;fill:#fff}.sectionHint{font-family:'Noto Sans Bengali',sans-serif;font-size:29px;font-weight:400;fill:#0b2b55}.label{font-family:'Noto Sans Bengali',sans-serif;font-size:25px;font-weight:400;fill:#0b2b55}.field{fill:#fff;stroke:#475569;stroke-width:3}.value{font-family:'Noto Sans Bengali',sans-serif;font-size:34px;font-weight:400;fill:#172554}.footer{font-family:'Noto Sans Bengali',sans-serif;font-size:36px;font-weight:400;fill:#d90429}.url{font-family:Arial,sans-serif;font-size:22px;font-weight:700;fill:#0b2b55}
     </style>
   </svg>`;
 }
