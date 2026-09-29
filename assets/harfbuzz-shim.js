@@ -6,9 +6,11 @@ let exports;
 let freeFuncPtr;
 const utf8Decoder = new TextDecoder("utf8");
 const utf8Encoder = new TextEncoder();
-const registry = new FinalizationRegistry((cleanup) => {
-	cleanup();
-});
+const registry = typeof FinalizationRegistry === 'undefined'
+  ? { register() {} }
+  : new FinalizationRegistry((cleanup) => {
+    cleanup();
+  });
 function track(obj, destroy) {
 	const ptr = obj.ptr;
 	registry.register(obj, () => destroy(ptr));
