@@ -2320,8 +2320,16 @@ function otTagToLanguage(tag) {
 }
 //#endregion
 //#region src/index.ts
-const compressedHarfBuzz = Uint8Array.from(atob(HARFBUZZ_WASM_GZIP_BASE64), c => c.charCodeAt(0));
-const decompressedHarfBuzz = await new Response(new globalThis.Blob([compressedHarfBuzz]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-init(await createHarfBuzz({ wasmBinary: new Uint8Array(decompressedHarfBuzz) }));
+let readyPromise = null;
+async function ensureReady() {
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      const compressedHarfBuzz = Uint8Array.from(atob(HARFBUZZ_WASM_GZIP_BASE64), c => c.charCodeAt(0));
+      const decompressedHarfBuzz = await new Response(new globalThis.Blob([compressedHarfBuzz]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+      init(await createHarfBuzz({ wasmBinary: new Uint8Array(decompressedHarfBuzz) }));
+    })();
+  }
+  return readyPromise;
+}
 //#endregion
-export { init, AxisFlags, Blob, Buffer, BufferContentType, BufferFlag, BufferSerializeFlag, BufferSerializeFormat, ClusterLevel, ColorPaletteFlags, Direction, DrawFuncs, Face, Feature, Font, FontFuncs, GlyphClass, GlyphFlag, MetricsTag, PaintCompositeMode, PaintExtend, PaintFuncs, TracePhase, Variation, otTagToLanguage, otTagToScript, shape, shapeWithTrace, version, versionString };
+export { ensureReady, init, AxisFlags, Blob, Buffer, BufferContentType, BufferFlag, BufferSerializeFlag, BufferSerializeFormat, ClusterLevel, ColorPaletteFlags, Direction, DrawFuncs, Face, Feature, Font, FontFuncs, GlyphClass, GlyphFlag, MetricsTag, PaintCompositeMode, PaintExtend, PaintFuncs, TracePhase, Variation, otTagToLanguage, otTagToScript, shape, shapeWithTrace, version, versionString };

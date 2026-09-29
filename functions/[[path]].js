@@ -4,14 +4,25 @@ import { NOTO_BENGALI_FONT } from '../assets/noto-bengali-font.js';
 import { NOTO_LATIN_FONT } from '../assets/noto-latin-font.js';
 import * as hb from '../assets/harfbuzz-shim.js';
 
-const posterHbBlob = new hb.Blob(NOTO_BENGALI_FONT);
-const posterHbFace = new hb.Face(posterHbBlob);
-const posterHbFont = new hb.Font(posterHbFace);
-const posterHbUpem = posterHbFace.upem || 1000;
-const posterLatinBlob = new hb.Blob(NOTO_LATIN_FONT);
-const posterLatinFace = new hb.Face(posterLatinBlob);
-const posterLatinFont = new hb.Font(posterLatinFace);
-const posterLatinUpem = posterLatinFace.upem || 1000;
+let posterFontsPromise = null;
+let posterHbFont;
+let posterHbUpem;
+let posterLatinFont;
+let posterLatinUpem;
+async function ensurePosterFonts() {
+  if (!posterFontsPromise) {
+    posterFontsPromise = (async () => {
+      await hb.ensureReady();
+      const posterHbFace = new hb.Face(new hb.Blob(NOTO_BENGALI_FONT));
+      posterHbFont = new hb.Font(posterHbFace);
+      posterHbUpem = posterHbFace.upem || 1000;
+      const posterLatinFace = new hb.Face(new hb.Blob(NOTO_LATIN_FONT));
+      posterLatinFont = new hb.Font(posterLatinFace);
+      posterLatinUpem = posterLatinFace.upem || 1000;
+    })();
+  }
+  return posterFontsPromise;
+}
 
 let posterRendererReady = null;
 async function renderBloodRequestPosterPng(svg) {
@@ -302,7 +313,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     let posterPng = null;
     try {
       // 1200x1500 (4:5) is a Facebook-ready portrait post size.
-      posterPng = await renderBloodRequestPosterPng(buildBloodRequestPosterSvg(requestData));
+      posterPng = await renderBloodRequestPosterPng(await buildBloodRequestPosterSvg(requestData));
     } catch (posterRenderError) {
       console.error('Blood request poster PNG render failed:', posterRenderError);
     }
@@ -510,7 +521,8 @@ function shapedPosterText(value, x, baseline, size, fill, anchor = 'start', maxW
   return `<g aria-label="${escapeXml(text)}">${paths}</g>`;
 }
 
-function buildBloodRequestPosterSvg(data) {
+async function buildBloodRequestPosterSvg(data) {
+  await ensurePosterFonts();
   const fields = [
     ['রোগীর পুরো নাম', posterText(data.patient_name)],
     ['রক্তের গ্রুপ', posterText(data.blood_group)],
