@@ -285,6 +285,14 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
             })
           });
         }
+
+        // Keep the original text alert, then add a clean poster containing only
+        // patient details plus the applicant name and phone number.
+        const posterRes = await sendBloodRequestPoster(token, uid, requestData);
+        if (!posterRes.ok) {
+          const posterError = await posterRes.json().catch(() => ({}));
+          console.error(`Telegram poster send to ${uid} failed:`, posterError);
+        }
       } catch (sendErr) {
         console.error(`Error sending to uid ${uid}:`, sendErr);
       }
@@ -409,6 +417,60 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function escapeXml(str) {
+  return String(str ?? '').replace(/[<>&'\"]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[ch]));
+}
+
+function posterText(value, fallback = 'তথ্য দেওয়া হয়নি') {
+  const text = String(value ?? '').trim();
+  return escapeXml(text || fallback);
+}
+
+function buildBloodRequestPosterSvg(data) {
+  const fields = [
+    ['রোগীর পুরো নাম', posterText(data.patient_name)],
+    ['রক্তের গ্রুপ', posterText(data.blood_group)],
+    ['রক্তের পরিমাণ (ব্যাগ)', posterText(data.units, '১')],
+    ['হিমোগ্লোবিন', data.hemoglobin_unknown ? 'জানা নেই' : posterText(data.hemoglobin)],
+    ['রক্ত লাগবে', posterText(data.needed_by)],
+    ['চিকিৎসাধীন জেলা', posterText(data.district)],
+    ['হাসপাতালের থানা / এলাকা', posterText(data.thana)],
+    ['হাসপাতালের নাম ও ওয়ার্ড', posterText(data.hospital_name)],
+    ['সুনির্দিষ্ট ঠিকানা / রোড', posterText(data.location)],
+    ['রোগের কারণ / অতিরিক্ত তথ্য', posterText(data.note)],
+    ['আবেদনকারীর পুরো নাম', posterText(data.requester_name, 'স্বজন')],
+    ['যোগাযোগের মোবাইল নম্বর', posterText(data.contact_phone)]
+  ];
+  const rows = fields.map(([label, value], index) => {
+    const y = 430 + index * 82;
+    return `<text x="90" y="${y}" class="label">${index + 1}. ${label}:</text><rect x="430" y="${y - 38}" width="570" height="56" rx="12" class="field"/><text x="455" y="${y - 3}" class="value">${value}</text>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1500" viewBox="0 0 1080 1500">
+    <rect width="1080" height="1500" fill="#ffffff"/>
+    <rect x="0" y="0" width="1080" height="16" fill="#0b2b55"/><rect x="0" y="16" width="1080" height="18" fill="#d90429"/>
+    <text x="540" y="105" text-anchor="middle" class="brand">BRYBDPF</text>
+    <text x="540" y="155" text-anchor="middle" class="brandBn">রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক</text>
+    <line x1="110" y1="190" x2="970" y2="190" stroke="#0b2b55" stroke-width="5"/>
+    <rect x="90" y="225" width="900" height="105" rx="28" fill="#d90429" stroke="#9f1239" stroke-width="8"/>
+    <text x="540" y="294" text-anchor="middle" class="title">জরুরি রক্তের প্রয়োজন</text>
+    ${rows}
+    <line x1="80" y1="1390" x2="1000" y2="1390" stroke="#0b2b55" stroke-width="5"/>
+    <text x="540" y="1445" text-anchor="middle" class="footer">রক্তদানে এগিয়ে আসুন — জীবন বাঁচান</text>
+    <text x="540" y="1480" text-anchor="middle" class="url">brybdpf.pages.dev</text>
+    <style>
+      .brand{font:900 66px Arial,sans-serif;fill:#0b2b55;letter-spacing:3px}.brandBn{font:700 30px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#d90429}.title{font:900 48px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#fff}.label{font:700 26px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#0b2b55}.field{fill:#fff;stroke:#64748b;stroke-width:2}.value{font:600 24px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#172554}.footer{font:800 30px 'Noto Sans Bengali','Hind Siliguri',sans-serif;fill:#d90429}.url{font:600 18px Arial,sans-serif;fill:#334155}
+    </style>
+  </svg>`;
+}
+
+async function sendBloodRequestPoster(token, uid, requestData) {
+  const form = new FormData();
+  form.append('chat_id', uid);
+  form.append('caption', '🩸 জরুরি রক্তের আবেদন পোস্টার');
+  form.append('document', new Blob([buildBloodRequestPosterSvg(requestData)], { type: 'image/svg+xml' }), `brybdpf-blood-request-${requestData.id || 'new'}.svg`);
+  return fetch(`https://api.telegram.org/bot${token}/sendDocument`, { method: 'POST', body: form });
 }
 
 function parseTelegramAdminUids(value) {
