@@ -1,5 +1,5 @@
 import createHarfBuzz from "./harfbuzz-runtime.js";
-import harfbuzzWasm from "harfbuzzjs/dist/harfbuzz.wasm";
+import { HARFBUZZ_WASM_GZIP_BASE64 } from "./harfbuzz-wasm-gzip.js";
 //#region src/helpers.ts
 let Module;
 let exports;
@@ -2318,6 +2318,8 @@ function otTagToLanguage(tag) {
 }
 //#endregion
 //#region src/index.ts
-init(await createHarfBuzz({ wasmBinary: harfbuzzWasm }));
+const compressedHarfBuzz = Uint8Array.from(atob(HARFBUZZ_WASM_GZIP_BASE64), c => c.charCodeAt(0));
+const decompressedHarfBuzz = await new Response(new Blob([compressedHarfBuzz]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+init(await createHarfBuzz({ wasmBinary: decompressedHarfBuzz }));
 //#endregion
 export { init, AxisFlags, Blob, Buffer, BufferContentType, BufferFlag, BufferSerializeFlag, BufferSerializeFormat, ClusterLevel, ColorPaletteFlags, Direction, DrawFuncs, Face, Feature, Font, FontFuncs, GlyphClass, GlyphFlag, MetricsTag, PaintCompositeMode, PaintExtend, PaintFuncs, TracePhase, Variation, otTagToLanguage, otTagToScript, shape, shapeWithTrace, version, versionString };
