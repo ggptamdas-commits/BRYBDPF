@@ -227,6 +227,18 @@
             </div>
           </div>
 
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-crimson-700 mb-1">রোগীর হিমোগ্লোবিন *</label>
+              <input type="number" id="req-hemoglobin" min="1" max="30" step="0.1" placeholder="উদাঃ ১২.৫" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+              <span class="text-[11px] text-slate-400 mt-0.5 block">জানা থাকলে g/dL মান লিখুন</span>
+            </div>
+            <label class="flex items-center gap-3 mt-2 sm:mt-6 rounded-xl border border-slate-200 bg-white px-3 py-2.5 cursor-pointer">
+              <input type="checkbox" id="req-hemoglobin-unknown" onchange="toggleHemoglobinField()" class="w-5 h-5 rounded text-crimson-600 focus:ring-crimson-500">
+              <span class="text-sm font-semibold text-slate-700">হিমোগ্লোবিন জানা নেই</span>
+            </label>
+          </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">কখন রক্ত লাগবে? *</label>
@@ -480,6 +492,11 @@
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">গ্রাম / পাড়া / মহল্লা / রোড (ঐচ্ছিক)</label>
           <input type="text" id="reg-moholla" placeholder="উদাঃ কলেজ রোড, ধাপ, মাস্টারপাড়া..." class="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-crimson-500 bg-white">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-crimson-700 mb-1">বর্তমান ঠিকানা *</label>
+          <textarea id="reg-current-address" required rows="2" placeholder="আপনি বর্তমানে যেখানে থাকেন—প্রবাসে বা অন্য জেলায় থাকলে সেই পূর্ণ ঠিকানা লিখুন" class="w-full p-3 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-crimson-500 bg-white"></textarea>
+          <span class="text-[11px] text-slate-400 mt-0.5 block">ডোনারের বর্তমান অবস্থান বুঝতে এই ঠিকানা ব্যবহার করা হবে</span>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -778,6 +795,16 @@
     function loadCaptcha(force = false) { return loadCaptchaFor('request', 'captcha-question', 'captcha-token', 'captcha-answer', '৩ + ৪ = ?', force); }
     function loadDonorCaptcha(force = false) { return loadCaptchaFor('donor', 'donor-captcha-question', 'donor-captcha-token', 'donor-captcha-answer', '৫ + ৩ = ?', force); }
 
+    function toggleHemoglobinField() {
+      const input = document.getElementById('req-hemoglobin');
+      const unknown = document.getElementById('req-hemoglobin-unknown');
+      if (!input || !unknown) return;
+      input.disabled = unknown.checked;
+      input.required = !unknown.checked;
+      if (unknown.checked) input.value = '';
+      input.classList.toggle('bg-slate-100', unknown.checked);
+    }
+
     function openDonorModal() {
       document.getElementById('donor-modal').classList.remove('hidden');
       loadDonorCaptcha();
@@ -799,6 +826,16 @@
       const patientDist = document.getElementById('req-district').value || 'রংপুর';
       const rawLoc = document.getElementById('req-location').value;
       const fullLoc = patientThana ? `${patientThana}, ${rawLoc}` : rawLoc;
+      const hemoglobinInput = document.getElementById('req-hemoglobin');
+      const hemoglobinUnknown = document.getElementById('req-hemoglobin-unknown')?.checked || false;
+      const hemoglobin = hemoglobinInput?.value.trim() || '';
+      if (!hemoglobin && !hemoglobinUnknown) {
+        hemoglobinInput?.classList.add('border-red-500', 'ring-2', 'ring-red-200');
+        showCustomDialog('warning', 'হিমোগ্লোবিনের তথ্য দিন', 'হিমোগ্লোবিন জানা থাকলে মান লিখুন, না জানলে “হিমোগ্লোবিন জানা নেই” নির্বাচন করুন।');
+        hemoglobinInput?.focus();
+        return;
+      }
+      hemoglobinInput?.classList.remove('border-red-500', 'ring-2', 'ring-red-200');
 
       const payload = {
         patient_name: document.getElementById('req-patient-name').value,
@@ -809,6 +846,8 @@
         needed_by: document.getElementById('req-needed-by').value,
         hospital_name: document.getElementById('req-hospital').value,
         location: fullLoc,
+        hemoglobin: hemoglobinUnknown ? null : hemoglobin,
+        hemoglobin_unknown: hemoglobinUnknown ? 1 : 0,
         urgency: 'Emergency',
         note: document.getElementById('req-note').value,
         requester_name: document.getElementById('req-applicant-name').value,
@@ -855,6 +894,7 @@
         alertBox.className = 'hidden';
         showCustomDialog('success', 'রক্তের আবেদন সম্পন্ন', data.message || 'আপনার জরুরি রক্তের আবেদন সফলভাবে গ্রহণ করা হয়েছে। নিকটবর্তী ডোনারদের জানানো হচ্ছে।');
         document.getElementById('blood-request-form').reset();
+        toggleHemoglobinField();
         loadCaptcha(true);
         loadStats(true);
       } catch (err) {
@@ -914,6 +954,7 @@
         phone: document.getElementById('reg-phone').value,
         district: donorDist,
         area: fullArea,
+        current_address: document.getElementById('reg-current-address').value.trim(),
         age: parseInt(document.getElementById('reg-age').value, 10),
         gender: document.getElementById('reg-gender') ? document.getElementById('reg-gender').value : 'Male',
         last_donation_date: document.getElementById('reg-last-date').value || null,
@@ -1024,7 +1065,7 @@
       setCardText('card-donor-bg', donor.blood_group || '—');
       setCardText('card-donor-phone', donor.phone || '—');
       setCardText('card-donor-age', donor.age || '—');
-      setCardText('card-donor-location', (donor.area ? donor.area + ', ' : '') + (donor.district || 'রংপুর'));
+      setCardText('card-donor-location', donor.current_address || ((donor.area ? donor.area + ', ' : '') + (donor.district || 'রংপুর')));
       const donorIdSeed = String(donor.phone || Date.now()).replace(/\D/g, '').slice(-4).padStart(4, '0');
       setCardText('card-donor-id', `BRY-${new Date().getFullYear()}-${donorIdSeed}`);
 
@@ -1062,7 +1103,7 @@
       if (!registeredDonorData) return;
       const bg = registeredDonorData.blood_group || '';
       const dist = registeredDonorData.district || 'রংপুর';
-      const area = registeredDonorData.area || '';
+      const area = registeredDonorData.current_address || registeredDonorData.area || '';
 
       const caption = `আলহামদুলিল্লাহ! মানবতার কল্যাণে আমি একজন গর্বিত স্বেচ্ছাসেবী রক্তদাতা হিসেবে BRYBDPF রংপুর বিভাগীয় ব্লাড নেটওয়ার্ক-এ সফলভাবে নিবন্ধন সম্পন্ন করেছি। 🩸❤️\n\n` +
         `🩸 আমার রক্তের গ্রুপ: ${bg}\n` +
@@ -1118,7 +1159,7 @@
       const labelX = 350, valueX = 560;
       const rows = [['Name', d.name || 'রক্তদাতা'], ['Blood Group', d.blood_group || '—'], ['Donor ID', document.getElementById('card-donor-id').textContent], ['Age', d.age || '—'], ['Contact', d.phone || '—']];
       rows.forEach((row, i) => { const y = 225 + i * 52; ctx.fillStyle = '#334155'; ctx.font = '23px Arial'; ctx.fillText(row[0], labelX, y); ctx.fillText(':', 515, y); ctx.fillStyle = i === 1 ? '#be123c' : '#111827'; ctx.font = i === 0 ? 'bold 26px Arial' : (i === 1 ? 'bold 32px Arial' : '24px Arial'); ctx.fillText(String(row[1]), valueX, y); });
-      ctx.fillStyle = '#334155'; ctx.font = '22px Arial'; ctx.fillText('Location', labelX, 495); ctx.fillText(':', 515, 495); ctx.fillText((d.area ? d.area + ', ' : '') + (d.district || 'রংপুর'), valueX, 495);
+      ctx.fillStyle = '#334155'; ctx.font = '22px Arial'; ctx.fillText('Location', labelX, 495); ctx.fillText(':', 515, 495); ctx.fillText(d.current_address || ((d.area ? d.area + ', ' : '') + (d.district || 'রংপুর')), valueX, 495);
 
       const qr = document.getElementById('card-qr-code');
       if (qr) { ctx.fillStyle = '#fff'; roundRect(948, 235, 150, 150, 16); ctx.fill(); ctx.drawImage(qr, 958, 245, 130, 130); }

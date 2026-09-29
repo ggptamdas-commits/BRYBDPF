@@ -673,6 +673,7 @@
 
           const safePatientName = escapeHtml(r.patient_name);
           const safeBloodGroup = escapeHtml(r.blood_group);
+          const safeHemoglobin = r.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(r.hemoglobin || 'তথ্য নেই');
           const safeHospitalName = escapeHtml(r.hospital_name);
           const safeDistrict = escapeHtml(r.district);
           const safeLocation = escapeHtml(r.location);
@@ -685,10 +686,11 @@
             <tr class="hover:bg-gray-50/50 transition border-b border-gray-100">
               <td class="py-3 px-4">
                 <div class="font-bold text-gray-900">${safePatientName}</div>
-                <div class="text-xs font-bold text-red-600 flex items-center gap-1.5 mt-0.5">
+                  <div class="text-xs font-bold text-red-600 flex items-center gap-1.5 mt-0.5">
                   <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-black text-xs">${safeBloodGroup}</span>
                   <span>(${parseInt(r.units, 10) || 1} ব্যাগ)</span>
                 </div>
+                <div class="text-[10px] text-slate-500 mt-1">হিমোগ্লোবিন: ${safeHemoglobin}</div>
               </td>
               <td class="py-3 px-4">
                 <div class="font-semibold text-gray-800">${safeHospitalName}</div>
@@ -792,6 +794,7 @@
           const safePhone = escapeHtml(d.phone);
           const safeDistrict = escapeHtml(d.district);
           const safeArea = escapeHtml(d.area);
+          const safeCurrentAddress = escapeHtml(d.current_address || 'বর্তমান ঠিকানা দেওয়া হয়নি');
           const safeLastDonation = escapeHtml(d.last_donation_date || 'তথ্য নেই');
 
           return `
@@ -803,7 +806,7 @@
               <td class="py-3 px-4 text-xs font-semibold text-gray-700">
                 <a href="tel:${safePhone}" class="text-blue-600 hover:underline"><i class="fa-solid fa-phone text-[10px]"></i> ${safePhone}</a>
               </td>
-              <td class="py-3 px-4 text-xs text-gray-600">${safeDistrict}, ${safeArea}</td>
+              <td class="py-3 px-4 text-xs text-gray-600"><div>${safeDistrict}, ${safeArea}</div><div class="text-[10px] text-blue-600 mt-1">বর্তমান: ${safeCurrentAddress}</div></td>
               <td class="py-3 px-4 text-xs text-gray-600">
                 <div>সর্বশেষ: ${safeLastDonation}</div>
                 <div class="text-[10px] text-gray-400 font-medium">মোট: ${d.total_donations || 0} বার</div>
@@ -909,6 +912,7 @@
             const safeDBG = escapeHtml(d.blood_group);
             const safeDArea = escapeHtml(d.area);
             const safeDDistrict = escapeHtml(d.district);
+            const safeDCurrentAddress = escapeHtml(d.current_address || `${d.area || ''}, ${d.district || ''}`);
             const safeDPhone = escapeHtml(d.phone);
 
             return `
@@ -919,7 +923,7 @@
                   </div>
                   <div>
                     <h4 class="font-bold text-gray-800 text-sm">${safeDName}</h4>
-                    <p class="text-xs text-gray-500">${safeDArea}, ${safeDDistrict} | বয়স: ${d.age || '-'}</p>
+                    <p class="text-xs text-gray-500">বর্তমান: ${safeDCurrentAddress} | বয়স: ${d.age || '-'}</p>
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -935,7 +939,7 @@
             `;
           }).join('');
 
-          shareText += donors.slice(0, 10).map((d, i) => `${i + 1}. ${d.name} (${d.district}) - ${d.phone}`).join('\n');
+          shareText += donors.slice(0, 10).map((d, i) => `${i + 1}. ${d.name} (${d.current_address || d.district}) - ${d.phone}`).join('\n');
           shareText += '\n\nদ্রুত যোগাযোগ করে রোগীর জীবন রক্ষায় সহযোগিতা নিন।\n- BRYBDPF ব্লাড ডোনার ম্যানেজমেন্ট';
         }
 
