@@ -852,8 +852,17 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         return;
       }
 
-      const stateRow = await env.DB.prepare("SELECT state, data FROM bot_admin_states WHERE admin_uid = ? AND updated_at > datetime('now', '-30 minutes')").bind(String(fromId)).first();
-      if (['donation_phone', 'waiting_for_donation_phone', 'waiting_for_phone'].includes(stateRow?.state) && text && !text.startsWith('/') && !text.includes('রক্তদান') && !text.includes('ডোনেশন') && !text.includes('মেনু') && !text.includes('রিফ্রেশ')) {
+      let stateRow = await env.DB.prepare("SELECT state, data FROM bot_admin_states WHERE admin_uid = ? AND updated_at > datetime('now', '-30 minutes')").bind(String(fromId)).first();
+      const isMenuAction = text === '/start' || text === '/menu' || text === '/stats' || text === '/groups' ||
+        text.includes('মেনু') || text.includes('রিফ্রেশ') || text.includes('পরিসংখ্যান') ||
+        text.includes('অপারেশন') || text.includes('ড্যাশবোর্ড') || text.includes('পেন্ডিং') ||
+        text.includes('গ্রুপভিত্তিক') || text.includes('রক্তদান') || text.includes('ডোনেশন') ||
+        text.includes('সার্চ') || text.includes('অ্যাকশন');
+      if (isMenuAction && stateRow?.state) {
+        await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
+        stateRow = null;
+      }
+      if (['donation_phone', 'waiting_for_donation_phone', 'waiting_for_phone'].includes(stateRow?.state) && text && !text.startsWith('/')) {
         const cleanPhone = normalizePhone(text);
         if (!isValidPhone(cleanPhone)) {
           await tgSendMessage(token, chatId, "⚠️ সঠিক ১১ ডিজিটের ফোন নম্বর দিন। যেমন: <code>017XXXXXXXX</code>", [[{ text: "❌ বাতিল", callback_data: "cb:don_cancel" }]]);
