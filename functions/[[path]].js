@@ -363,7 +363,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
             delivery.posterSent += 1;
           }
         } else {
-          delivery.posterError = 'Poster PNG generation failed before sending.';
+          delivery.posterError = delivery.posterError || 'Poster PNG generation failed before sending.';
         }
       } catch (sendErr) {
         console.error(`Error sending to uid ${uid}:`, sendErr);
