@@ -1777,6 +1777,7 @@ export async function onRequest(context) {
           if (assetRes.status === 200) {
             const h = new Headers(assetRes.headers);
             h.set("Content-Type", "text/html; charset=UTF-8");
+            h.delete("Access-Control-Allow-Origin");
             h.set("Content-Security-Policy-Report-Only", HTML_CSP_REPORT_ONLY);
             return new Response(assetRes.body, { status: 200, headers: h });
           }
@@ -1799,6 +1800,7 @@ export async function onRequest(context) {
           if (assetRes.status === 200) {
             const h = new Headers(assetRes.headers);
             h.set("Content-Type", "text/html; charset=UTF-8");
+            h.delete("Access-Control-Allow-Origin");
             h.set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
             h.set("Pragma", "no-cache");
             h.set("Expires", "0");
