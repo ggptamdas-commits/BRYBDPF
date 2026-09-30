@@ -32,7 +32,6 @@ function json(data, status = 200, extraHeaders = {}) {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
       "X-Content-Type-Options": "nosniff",
@@ -49,7 +48,6 @@ function html(content, status = 200) {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -363,6 +361,7 @@ async function getAuthenticatedAdmin(request, env) {
 }
 
 const TELEGRAM_WEBHOOK_SECRET_KEY = "telegram_webhook_secret";
+const HTML_CSP_REPORT_ONLY = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 let telegramTablesReady = null;
 let optionalFieldsReady = null;
 async function ensureOptionalFields(env) {
@@ -507,7 +506,7 @@ function getMainAdminReplyKeyboard() {
       [{ text: "⚡ অপারেশন ড্যাশবোর্ড" }, { text: "📊 পরিসংখ্যান" }],
       [{ text: "🩸 গ্রুপভিত্তিক ডোনার" }, { text: "📋 পেন্ডিং রিকোয়েস্ট" }],
       [{ text: "💉 রক্তদান সম্পন্ন" }, { text: "🔍 ডোনার সার্চ / অ্যাকশন" }],
-      [{ text: "🔄 রিফ্রেশ মেনু" }]
+      [{ text: "ℹ️ কীভাবে ব্যবহার করবেন" }, { text: "🔄 রিফ্রেশ মেনু" }]
     ],
     resize_keyboard: true,
     is_persistent: true
@@ -529,6 +528,7 @@ function getMainAdminKeyboard() {
       { text: "🔍 ডোনার সার্চ / অ্যাকশন", callback_data: "cb:donor_search" }
     ],
     [
+      { text: "ℹ️ ব্যবহার নির্দেশিকা", callback_data: "cb:help" },
       { text: "🔄 রিফ্রেশ", callback_data: "cb:menu" }
     ]
   ];
@@ -616,6 +616,15 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const rows = results || [];
       const text = `🧾 <b>সাম্প্রতিক admin activity</b>\n────────────────────\n` + (rows.length ? rows.map((r, i) => `${i + 1}. <b>${escapeHtml(r.action)}</b> ${r.entity_id ? `#${r.entity_id}` : ''}\n   👤 ${escapeHtml(r.admin_uid)} • ${escapeHtml(r.created_at || '')}\n   ${escapeHtml(r.details || '')}`).join('\n\n') : 'এখনও কোনো activity record নেই।');
       return tgSendOrEdit(token, targetChatId, targetMsgId, text, [[{ text: '🔄 Refresh', callback_data: 'cb:audit' }], [{ text: '⚡ অপারেশন ড্যাশবোর্ড', callback_data: 'cb:ops' }], [{ text: '🔙 মূল মেনু', callback_data: 'cb:menu' }]], isCb);
+    };
+
+    const renderHelp = async (targetChatId, targetMsgId, isCb) => {
+      const text = `ℹ️ <b>BRYBDPF Telegram Admin — দ্রুত নির্দেশিকা</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `1️⃣ <b>নতুন রিকোয়েস্ট:</b> Pending তালিকা → case খুলুন → Claim করুন → Matching donors দেখুন → কাজ শেষ হলে Matched/Fulfilled করুন।\n\n` +
+        `2️⃣ <b>রক্তদান সম্পন্ন:</b> রক্তদান সম্পন্ন → donor-এর ১১ ডিজিটের ফোন নম্বর → নাম/গ্রুপ যাচাই → Confirm করুন। নারী donor ৪ মাস, অন্যদের ৩ মাস unavailable থাকবে।\n\n` +
+        `3️⃣ <b>ডোনার খোঁজা:</b> গ্রুপভিত্তিক তালিকা ১০ জন করে page আকারে দেখায়; সার্চে নাম, ফোন, জেলা, এলাকা বা blood group লিখতে পারেন।\n\n` +
+        `🔐 শুধু অনুমোদিত Telegram admin-রাই bot ব্যবহার করতে পারবেন।\n📌 কোনো কাজ আটকে গেলে মূল মেনুতে ফিরে একই action আবার চালু করুন।`;
+      return tgSendOrEdit(token, targetChatId, targetMsgId, text, [[{ text: '⚡ অপারেশন ড্যাশবোর্ড', callback_data: 'cb:ops' }], [{ text: '📋 Pending রিকোয়েস্ট', callback_data: 'cb:pending' }], [{ text: '🔙 মূল মেনু', callback_data: 'cb:menu' }]], isCb);
     };
 
     const renderRequestDetails = async (targetChatId, targetMsgId, requestId, adminUid, isCb) => {
@@ -751,6 +760,11 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
 
       if (data === "cb:audit") {
         await renderAudit(chatId, messageId, true);
+        return;
+      }
+
+      if (data === "cb:help") {
+        await renderHelp(chatId, messageId, true);
         return;
       }
 
@@ -897,7 +911,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       }
 
       let stateRow = await env.DB.prepare("SELECT state, data FROM bot_admin_states WHERE admin_uid = ? AND updated_at > datetime('now', '-30 minutes')").bind(String(fromId)).first();
-      const isMenuAction = text === '/start' || text === '/menu' || text === '/stats' || text === '/groups' ||
+      const isMenuAction = text === '/start' || text === '/menu' || text === '/help' || text === '/stats' || text === '/groups' ||
         text.includes('মেনু') || text.includes('রিফ্রেশ') || text.includes('পরিসংখ্যান') ||
         text.includes('অপারেশন') || text.includes('ড্যাশবোর্ড') || text.includes('পেন্ডিং') ||
         text.includes('গ্রুপভিত্তিক') || text.includes('রক্তদান') || text.includes('ডোনেশন') ||
@@ -937,6 +951,11 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
         const welcomeText = `🩸 <b>BRYBDPF স্মার্ট অ্যাডমিন কন্ট্রোল প্যানেল</b> 🩸\nস্বাগতম! নিচের বাটনগুলো চেপে সহজেই রিয়েলটাইম ডোনার ও রক্তের রিকোয়েস্ট পরিচালনা করুন:`;
         await tgSendMessage(token, chatId, welcomeText, getMainAdminKeyboard());
+        return;
+      }
+
+      if (text === "/help" || text.includes("ব্যবহার নির্দেশিকা") || text.includes("কীভাবে ব্যবহার")) {
+        await renderHelp(chatId, null, false);
         return;
       }
 
@@ -1366,6 +1385,16 @@ export async function onRequest(context) {
           return json({ error: "ইমেইল এবং পাসওয়ার্ড দিন।" }, 400);
         }
 
+        try {
+          const ipLimited = await isRateLimited(env, `admin-login:ip:${getClientIP(request)}`, 10, 15);
+          const accountLimited = await isRateLimited(env, `admin-login:account:${emailOrUser.toLowerCase()}`, 5, 15);
+          if (ipLimited || accountLimited) {
+            return json({ error: "অনেকবার লগইন চেষ্টা করা হয়েছে। ১৫ মিনিট পরে আবার চেষ্টা করুন।", code: "LOGIN_RATE_LIMITED" }, 429);
+          }
+        } catch (rateLimitError) {
+          console.error("Admin login rate-limit check failed:", rateLimitError);
+        }
+
         let user = await env.DB.prepare(
           "SELECT * FROM admins WHERE LOWER(email) = LOWER(?)"
         ).bind(emailOrUser).first();
@@ -1423,8 +1452,12 @@ export async function onRequest(context) {
 
       if (path === "/api/admin/logout" && method === "POST") {
         const authHeader = request.headers.get("Authorization");
-        if (authHeader && authHeader.startsWith("Bearer ")) {
-          const token = authHeader.substring(7).trim();
+        let token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
+        if (!token) {
+          const cookie = request.headers.get("Cookie") || "";
+          token = cookie.match(/brybdpf_session=([a-f0-9\-]+)/i)?.[1] || "";
+        }
+        if (token) {
           await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
           await env.DB.prepare("DELETE FROM admin_sessions WHERE token = ?").bind(token).run();
         }
@@ -1737,6 +1770,20 @@ export async function onRequest(context) {
         }
       }
 
+      if (path === "/" || path === "/index.html") {
+        if (env.ASSETS) {
+          const assetPath = path === "/index.html" ? "/index.html" : "/";
+          const assetRes = await env.ASSETS.fetch(new Request(`${url.origin}${assetPath}`, request));
+          if (assetRes.status === 200) {
+            const h = new Headers(assetRes.headers);
+            h.set("Content-Type", "text/html; charset=UTF-8");
+            h.set("Content-Security-Policy-Report-Only", HTML_CSP_REPORT_ONLY);
+            return new Response(assetRes.body, { status: 200, headers: h });
+          }
+        }
+        return context.next();
+      }
+
       if (path === "/admin" || path === "/admin/" || path === "/admin.html") {
         if (env.ASSETS) {
           let assetRes = await env.ASSETS.fetch(new Request(`${url.origin}/admin`, request));
@@ -1755,6 +1802,7 @@ export async function onRequest(context) {
             h.set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
             h.set("Pragma", "no-cache");
             h.set("Expires", "0");
+            h.set("Content-Security-Policy-Report-Only", HTML_CSP_REPORT_ONLY);
             return new Response(assetRes.body, { status: 200, headers: h });
           }
         }
