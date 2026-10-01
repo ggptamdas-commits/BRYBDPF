@@ -177,8 +177,23 @@
       <form id="blood-request-form" onsubmit="submitBloodRequest(event)" class="p-5 sm:p-6 space-y-5">
         <div id="request-alert-box" class="hidden p-4 rounded-xl text-sm font-semibold"></div>
 
+        <div id="request-progress" class="rounded-2xl border border-rose-100 bg-rose-50/60 p-3 sm:p-4" aria-label="রক্তের আবেদন ধাপ">
+          <div class="grid grid-cols-3 gap-2 sm:gap-3 text-center">
+            <div data-request-progress="1" class="request-progress-step rounded-xl bg-crimson-600 px-2 py-2 text-[11px] sm:text-xs font-bold text-white shadow-sm transition">
+              <span class="block text-[10px] opacity-80">ধাপ ১</span>রোগীর তথ্য
+            </div>
+            <div data-request-progress="2" class="request-progress-step rounded-xl bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-slate-500 ring-1 ring-slate-200 transition">
+              <span class="block text-[10px] opacity-70">ধাপ ২</span>আবেদনকারীর তথ্য
+            </div>
+            <div data-request-progress="3" class="request-progress-step rounded-xl bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-slate-500 ring-1 ring-slate-200 transition">
+              <span class="block text-[10px] opacity-70">ধাপ ৩</span>নিশ্চিত করুন
+            </div>
+          </div>
+          <p id="request-progress-note" class="mt-2 text-center text-[11px] text-slate-500">প্রথমে রোগীর জরুরি তথ্য পূরণ করুন</p>
+        </div>
+
         <!-- Part 1: Patient Information -->
-        <div class="p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-4">
+        <div data-request-panel="1" class="request-step-panel p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-4">
           <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-crimson-600"></span>
             ১. রোগীর বিবরণ ও রক্তের প্রয়োজনীয়তা
@@ -262,10 +277,11 @@
             <label class="block text-xs font-semibold text-slate-700 mb-1">অতিরিক্ত কোনো তথ্য / রোগের কারণ (ঐচ্ছিক)</label>
             <textarea id="req-note" rows="2" placeholder="রোগীর অপারেশনের বিবরণ অথবা বিশেষ নির্দেশনা..." class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition"></textarea>
           </div>
+          <button type="button" onclick="nextRequestStep()" class="w-full sm:w-auto sm:ml-auto tap-target px-6 py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-sm font-bold shadow transition">পরবর্তী: আবেদনকারীর তথ্য →</button>
         </div>
 
         <!-- Part 2: Applicant & Future Donor Registration Section -->
-        <div class="bg-rose-50/50 p-4 sm:p-5 rounded-2xl border border-rose-100 space-y-4">
+        <div data-request-panel="2" class="request-step-panel hidden bg-rose-50/50 p-4 sm:p-5 rounded-2xl border border-rose-100 space-y-4">
           <div class="flex items-center gap-2">
             <svg class="w-5 h-5 text-crimson-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
             <h3 class="text-sm font-bold text-slate-900">২. আবেদনকারীর বিবরণ ও ভবিষ্যৎ রক্তদাতা নিবন্ধন</h3>
@@ -342,6 +358,16 @@
             <textarea id="req-applicant-current-address" required rows="2" placeholder="আপনি বর্তমানে যেখানে থাকেন—প্রবাসে বা অন্য জেলায় থাকলে সেই পূর্ণ ঠিকানা লিখুন" class="w-full p-3 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-crimson-500 bg-white"></textarea>
             <span class="text-[11px] text-slate-400 mt-0.5 block">এই ঠিকানা আবেদনকারীকে ডোনার তালিকায় যুক্ত করতে ব্যবহার করা হবে</span>
           </div>
+          <div class="flex flex-col-reverse sm:flex-row gap-3 sm:justify-between pt-1">
+            <button type="button" onclick="previousRequestStep()" class="tap-target px-5 py-3 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-bold transition hover:bg-slate-50">← আগের ধাপ</button>
+            <button type="button" onclick="nextRequestStep()" class="tap-target px-6 py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-sm font-bold shadow transition">পরবর্তী: নিশ্চিত করুন →</button>
+          </div>
+        </div>
+
+        <div data-request-panel="3" class="request-step-panel hidden space-y-5">
+        <div class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 text-sm text-emerald-900">
+          <p class="font-bold">শেষ ধাপ: সম্মতি ও রোবট যাচাই</p>
+          <p class="mt-1 text-xs text-emerald-800">তথ্যগুলো দেখে নিচের সম্মতিগুলো দিন, তারপর আবেদন পাঠান।</p>
         </div>
 
         <!-- Mandatory Agreement Checkboxes -->
@@ -377,6 +403,8 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
           জরুরি রিকোয়েস্ট সাবমিট করুন
         </button>
+        <button type="button" onclick="previousRequestStep()" class="w-full tap-target py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-bold transition hover:bg-slate-50">← আবেদনকারীর তথ্য সংশোধন করুন</button>
+        </div>
       </form>
     </div>
   </section>
@@ -819,6 +847,49 @@
       input.required = !unknown.checked;
       if (unknown.checked) input.value = '';
       input.classList.toggle('bg-slate-100', unknown.checked);
+    }
+
+    let requestStep = 1;
+    const requestStepNotes = {
+      1: 'প্রথমে রোগীর জরুরি তথ্য পূরণ করুন',
+      2: 'আবেদনকারীকে ভবিষ্যৎ ডোনার হিসেবে যুক্ত করার তথ্য দিন',
+      3: 'সম্মতি দিন, ক্যাপচা পূরণ করুন এবং আবেদন পাঠান'
+    };
+
+    function showRequestStep(step) {
+      requestStep = Math.min(3, Math.max(1, Number(step) || 1));
+      document.querySelectorAll('[data-request-panel]').forEach(panel => {
+        panel.classList.toggle('hidden', Number(panel.dataset.requestPanel) !== requestStep);
+      });
+      document.querySelectorAll('[data-request-progress]').forEach(item => {
+        const active = Number(item.dataset.requestProgress) === requestStep;
+        const complete = Number(item.dataset.requestProgress) < requestStep;
+        item.classList.toggle('bg-crimson-600', active || complete);
+        item.classList.toggle('text-white', active || complete);
+        item.classList.toggle('shadow-sm', active || complete);
+        item.classList.toggle('bg-white', !active && !complete);
+        item.classList.toggle('text-slate-500', !active && !complete);
+        item.setAttribute('aria-current', active ? 'step' : 'false');
+      });
+      const note = document.getElementById('request-progress-note');
+      if (note) note.textContent = requestStepNotes[requestStep];
+      const form = document.getElementById('blood-request-form');
+      if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function nextRequestStep() {
+      const panel = document.querySelector(`[data-request-panel="${requestStep}"]`);
+      if (panel) {
+        const fields = Array.from(panel.querySelectorAll('input, select, textarea'));
+        const invalid = fields.find(field => !field.disabled && !field.checkValidity());
+        if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
+      }
+      showRequestStep(requestStep + 1);
+      if (requestStep === 3 && !document.getElementById('captcha-token')?.value) loadCaptcha();
+    }
+
+    function previousRequestStep() {
+      showRequestStep(requestStep - 1);
     }
 
     function openDonorModal() {
