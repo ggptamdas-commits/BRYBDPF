@@ -57,6 +57,13 @@
     body { font-family: 'Hind Siliguri', 'Noto Sans Bengali', sans-serif; overflow-x: hidden; }
     input, select, textarea, button { font-family: inherit; }
     input::placeholder, textarea::placeholder { font-family: inherit; opacity: .78; }
+    #blood-request-form.request-form-readable label:not(.flex) { font-size: 0.9rem; line-height: 1.45; }
+    #blood-request-form.request-form-readable input:not([type="checkbox"]),
+    #blood-request-form.request-form-readable select,
+    #blood-request-form.request-form-readable textarea { font-size: 1rem; }
+    #blood-request-form.request-form-readable input:not([type="checkbox"]),
+    #blood-request-form.request-form-readable select { min-height: 2.9rem; }
+    #blood-request-form.request-form-readable .text-xs { font-size: 0.82rem; }
     .bn-number { font-family: 'Hind Siliguri', 'Noto Sans Bengali', sans-serif; font-variant-numeric: normal; font-feature-settings: normal; }
     .blood-drop-pulse { animation: pulse-drop 2s infinite ease-in-out; }
     @keyframes pulse-drop {
@@ -174,7 +181,7 @@
       </div>
 
       <!-- Request Form -->
-      <form id="blood-request-form" onsubmit="submitBloodRequest(event)" class="p-5 sm:p-6 space-y-5">
+      <form id="blood-request-form" onsubmit="submitBloodRequest(event)" class="p-5 sm:p-6 space-y-5 request-form-readable">
         <div id="request-alert-box" class="hidden p-4 rounded-xl text-sm font-semibold"></div>
 
         <div id="request-progress" class="rounded-2xl border border-rose-100 bg-rose-50/60 p-3 sm:p-4" aria-label="রক্তের আবেদন ধাপ">
@@ -373,15 +380,9 @@
         <!-- Mandatory Agreement Checkboxes -->
         <div class="space-y-3 pt-2">
           <label class="flex items-start gap-3 cursor-pointer group">
-            <input type="checkbox" id="req-agree-1" required class="mt-1 w-4 h-4 rounded text-crimson-600 focus:ring-crimson-500 border-slate-300">
-            <span class="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900">
-              ১. ভবিষ্যতে অন্য কারো রক্তের প্রয়োজন হলে একজন রক্তদাতা হিসেবে সাধ্যমতো রক্ত দেওয়ার চেষ্টা করব।
-            </span>
-          </label>
-          <label class="flex items-start gap-3 cursor-pointer group">
-            <input type="checkbox" id="req-agree-2" required class="mt-1 w-4 h-4 rounded text-crimson-600 focus:ring-crimson-500 border-slate-300">
-            <span class="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900">
-              ২. আমার এই তথ্যসমূহ নিরাপদ রক্তদাতা তালিকায় সংরক্ষণ ও জরুরি মুহূর্তে সমন্বয়ের জন্য ব্যবহারে আমার সম্মতি আছে।
+            <input type="checkbox" id="req-agree-2" required class="mt-1 w-5 h-5 shrink-0 rounded text-crimson-600 focus:ring-crimson-500 border-slate-300">
+            <span class="text-sm sm:text-base text-slate-700 font-medium leading-relaxed group-hover:text-slate-900">
+              আমি শপথ করছি—ভবিষ্যতে কারও রক্তের প্রয়োজন হলে, সামর্থ্য অনুযায়ী তাকে রক্ত দেওয়ার যথাযথ চেষ্টা করব। আমার এই তথ্য নিরাপদ রক্তদাতা তালিকায় সংরক্ষণ ও জরুরি সমন্বয়ের কাজে ব্যবহারে আমি সম্মত।
             </span>
           </label>
         </div>
@@ -945,7 +946,7 @@
         requester_district: document.getElementById('req-applicant-district').value || patientDist,
         requester_area: document.getElementById('req-applicant-area').value,
         requester_current_address: document.getElementById('req-applicant-current-address').value.trim(),
-        agreed_future_donation: document.getElementById('req-agree-1').checked ? 1 : 0,
+        agreed_future_donation: document.getElementById('req-agree-2').checked ? 1 : 0,
         agreed_data_save: document.getElementById('req-agree-2').checked ? 1 : 0,
         captcha_token: document.getElementById('captcha-token').value,
         captcha_answer: document.getElementById('captcha-answer').value
@@ -982,7 +983,12 @@
         alertBox.className = 'hidden';
         showCustomDialog('success', 'রক্তের আবেদন সম্পন্ন', data.message || 'আপনার জরুরি রক্তের আবেদন সফলভাবে গ্রহণ করা হয়েছে। নিকটবর্তী ডোনারদের জানানো হচ্ছে।');
         document.getElementById('blood-request-form').reset();
+        document.getElementById('req-district').value = 'রংপুর';
+        updateThanaOptions('req-district', 'req-patient-thana', false);
+        document.getElementById('req-applicant-district').value = 'রংপুর';
+        updateThanaOptions('req-applicant-district', 'req-applicant-area', false);
         toggleHemoglobinField();
+        showRequestStep(1);
         loadCaptcha(true);
         loadStats(true);
       } catch (err) {
