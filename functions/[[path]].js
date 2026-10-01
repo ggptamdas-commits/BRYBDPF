@@ -741,8 +741,8 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const messageId = cq.message?.message_id;
       const data = cq.data || "";
 
-      if (!allowedUids.includes(fromId)) {
-        await tgAnswerCallback(token, cq.id, "⛔ অননুমোদিত অ্যাক্সেস।");
+      if (cq.message?.chat?.type !== "private" || !allowedUids.includes(fromId)) {
+        await tgAnswerCallback(token, cq.id);
         return;
       }
 
@@ -905,8 +905,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       chatId = msg.chat?.id;
       const text = (msg.text || "").trim();
 
-      if (!allowedUids.includes(fromId)) {
-        await tgSendMessage(token, chatId, "⛔ <b>অননুমোদিত অ্যাক্সেস।</b>");
+      if (msg.chat?.type !== "private" || !allowedUids.includes(fromId)) {
         return;
       }
 
@@ -989,7 +988,8 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         return;
       }
 
-      await tgSendMessage(token, chatId, "🩸 <b>আপনার admin access সক্রিয় আছে</b>\nনিচের menu থেকে একটি অপশন নির্বাচন করুন:", getMainAdminKeyboard());
+      // Ignore arbitrary text instead of replying to spam or unexpected updates.
+      return;
     }
   } catch (err) {
     console.error("Telegram bot error:", err);
