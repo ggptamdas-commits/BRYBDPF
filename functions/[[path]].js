@@ -223,22 +223,14 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const safeNeed = escapeHtml(requestData.needed_by);
     const safeHemoglobin = requestData.hemoglobin_unknown ? "জানা নেই" : escapeHtml(requestData.hemoglobin || "তথ্য নেই");
     const safeReq = escapeHtml(requestData.requester_name || "স্বজন");
+    const safeReqPhone = escapeHtml(requestData.contact_phone || "");
     const safeReqAddress = escapeHtml(requestData.requester_current_address);
     const safeNote = escapeHtml(requestData.note);
     const units = requestData.units || 1;
 
     let donorListText = "";
     if (matchedDonors && matchedDonors.length > 0) {
-      donorListText = matchedDonors.slice(0, 10).map((d, i) => {
-        const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
-        const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-        const waUrl = `https://wa.me/${waNumber}`;
-        const tierBadge = d.proximity_tier === 1 ? "🎯 <b>[একই থানা]</b>" : (d.proximity_tier === 2 ? "📍 [একই জেলা]" : "🌐 [নিকটবর্তী]");
-        const loc = d.current_address ? escapeHtml(d.current_address) : ((d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর"));
-
-        return `${i + 1}. <b>${escapeHtml(d.name)}</b> (${loc}) ${tierBadge}\n` +
-          `   📞 <code>${d.phone}</code> ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
-      }).join("\n\n");
+      donorListText = matchedDonors.slice(0, 10).map((d, i) => formatTelegramDonor(d, i + 1)).join("\n\n");
     } else {
       donorListText = "⚠️ এই মুহূর্তে কোনো প্রস্তুত ডোনার পাওয়া যায়নি।";
     }
@@ -253,7 +245,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       `🧪 <b>হিমোগ্লোবিন:</b> ${safeHemoglobin}\n` +
       `⏰ <b>প্রয়োজনের সময়:</b> ${safeNeed}\n` +
       `────────────────────────────\n` +
-      `🤝 <b>আবেদনকারী:</b> ${safeReq} (📞 <a href="tel:${requestData.contact_phone}">${requestData.contact_phone}</a>)\n` +
+      `🤝 <b>আবেদনকারী:</b> ${safeReq} (📞 <a href="tel:${reqCleanPhone}">${safeReqPhone}</a>)\n` +
       (safeReqAddress ? `🏠 <b>আবেদনকারীর বর্তমান ঠিকানা:</b> ${safeReqAddress}\n` : "") +
       (safeNote ? `📝 <b>নোট:</b> ${safeNote}\n` : "") +
       `────────────────────────────\n` +
@@ -424,6 +416,25 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function truncateTelegramText(value, max = 180) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function formatTelegramDonor(donor, index = null, proximity = true) {
+  const cleanPhone = String(donor.phone || '').replace(/[^0-9]/g, '');
+  const waNumber = cleanPhone.startsWith('88') ? cleanPhone : (cleanPhone.startsWith('0') ? `88${cleanPhone}` : cleanPhone);
+  const waUrl = `https://wa.me/${waNumber}`;
+  const address = truncateTelegramText(donor.current_address || [donor.area, donor.district].filter(Boolean).join(', ') || 'ঠিকানা দেওয়া নেই');
+  const tier = proximity
+    ? (donor.proximity_tier === 1 ? ' • 🎯 একই থানা' : donor.proximity_tier === 2 ? ' • 📍 একই জেলা' : ' • 🌐 নিকটবর্তী')
+    : '';
+  const number = index === null ? '' : `${index}. `;
+  return `${number}<b>${escapeHtml(truncateTelegramText(donor.name || 'নাম দেওয়া নেই', 100))}</b>\n` +
+    `📍 ${escapeHtml(address)}${tier}\n` +
+    `📞 <code>${escapeHtml(donor.phone || cleanPhone || 'নম্বর নেই')}</code>  |  <a href="${waUrl}">💬 WhatsApp</a>`;
 }
 
 function escapeXml(str) {
@@ -724,7 +735,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const total = countRow?.c || 0;
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const donors = donorRows.results || [];
-      const text = `🩸 <b>#${requestId} — ${escapeHtml(req.patient_name)}</b>\nপ্রয়োজন: <code>${escapeHtml(req.blood_group)}</code> | ${escapeHtml(req.district)}\nপৃষ্ঠা ${safePage}/${totalPages} • মোট ${total} জন\n────────────────────\n` + (donors.length ? donors.map((d, i) => `${offset + i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.phone)}\n   📍 ${escapeHtml(d.current_address || ((d.area || '') + ', ' + (d.district || '')))} | দান ${d.total_donations || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো প্রস্তুত ডোনার নেই।");
+      const text = `🩸 <b>#${requestId} — ${escapeHtml(req.patient_name)}</b>\nপ্রয়োজন: <code>${escapeHtml(req.blood_group)}</code> | ${escapeHtml(req.district)}\nপৃষ্ঠা ${safePage}/${totalPages} • মোট ${total} জন\n────────────────────\n` + (donors.length ? donors.map((d, i) => `${formatTelegramDonor(d, offset + i + 1, false)}\n🩸 মোট দান: ${Number(d.total_donations) || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো প্রস্তুত ডোনার নেই।");
       const nav = [];
       if (safePage > 1) nav.push({ text: "⬅️ আগের", callback_data: `cb:req:${requestId}:view:${safePage - 1}` });
       if (safePage < totalPages) nav.push({ text: "পরের ➡️", callback_data: `cb:req:${requestId}:view:${safePage + 1}` });
@@ -881,13 +892,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         const totalPages = Math.max(1, Math.ceil(total / limit));
         const results = donorRows.results || [];
         let donorText = `🩸 <b>${escapeHtml(bg)} গ্রুপের প্রস্তুত ডোনার তালিকা</b>\nপৃষ্ঠা ${page}/${totalPages} • মোট ${total} জন\n────────────────────────────\n\n`;
-        donorText += results.length ? results.map((d, i) => {
-          const cleanPhone = (d.phone || "").replace(/[^0-9]/g, "");
-          const waNumber = cleanPhone.startsWith("88") ? cleanPhone : (cleanPhone.startsWith("0") ? "88" + cleanPhone : cleanPhone);
-          const waUrl = `https://wa.me/${waNumber}`;
-          const loc = d.current_address ? escapeHtml(d.current_address) : ((d.area ? escapeHtml(d.area) + ", " : "") + escapeHtml(d.district || "রংপুর"));
-          return `<b>${offset + i + 1}. ${escapeHtml(d.name)}</b> (${loc})\n   📞 <code>${d.phone}</code> | দান: ${d.total_donations || 0} বার ➔ <a href="${waUrl}">💬 <b>WhatsApp</b></a>`;
-        }).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো সক্রিয় ও প্রস্তুত ডোনার নেই।";
+        donorText += results.length ? results.map((d, i) => `${formatTelegramDonor(d, offset + i + 1, false)}\n🩸 মোট দান: ${Number(d.total_donations) || 0} বার`).join("\n\n") : "⚠️ এই গ্রুপে এখন কোনো সক্রিয় ও প্রস্তুত ডোনার নেই।";
         const nav = [];
         if (page > 1) nav.push({ text: "⬅️ আগের", callback_data: `cb:grp:${bg}:p:${page - 1}` });
         if (page < totalPages) nav.push({ text: "পরের ➡️", callback_data: `cb:grp:${bg}:p:${page + 1}` });
@@ -941,7 +946,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         const term = text.trim().slice(0, 80);
         const { results } = await env.DB.prepare("SELECT name, blood_group, phone, district, area, current_address, is_available FROM donors WHERE name LIKE ? OR phone LIKE ? OR district LIKE ? OR area LIKE ? OR current_address LIKE ? OR REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') ORDER BY id DESC LIMIT 10").bind(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, term).all();
         const rows = results || [];
-        const textOut = rows.length ? `🔍 <b>${escapeHtml(term)}</b>-এর জন্য ${rows.length} জন ডোনার:\n────────────────────\n` + rows.map((d, i) => `${i + 1}. <b>${escapeHtml(d.name)}</b> — ${escapeHtml(d.blood_group)}\n   ${escapeHtml(d.phone)} | ${escapeHtml(d.current_address || ((d.district || '') + ', ' + (d.area || '')))}`).join("\n\n") : `⚠️ <b>${escapeHtml(term)}</b>-এর জন্য কোনো ডোনার পাওয়া যায়নি।`;
+        const textOut = rows.length ? `🔍 <b>${escapeHtml(term)}</b>-এর জন্য ${rows.length} জন ডোনার:\n────────────────────\n` + rows.map((d, i) => `${formatTelegramDonor(d, i + 1, false)}\n🩸 গ্রুপ: <code>${escapeHtml(d.blood_group)}</code>`).join("\n\n") : `⚠️ <b>${escapeHtml(term)}</b>-এর জন্য কোনো ডোনার পাওয়া যায়নি।`;
         await tgSendMessage(token, chatId, textOut, [[{ text: "🔍 আবার সার্চ", callback_data: "cb:donor_search" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]]);
         return;
       }
