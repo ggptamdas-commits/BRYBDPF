@@ -1,4 +1,4 @@
-const CACHE_NAME = 'brybdpf-shell-v1';
+const CACHE_NAME = 'brybdpf-shell-v2';
 const SHELL_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -35,11 +35,17 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('/', copy));
+          // Only the public homepage belongs in the offline shell cache. Never
+          // let /admin or another document replace the cached homepage.
+          if (url.pathname === '/' || url.pathname === '/index.html') {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put('/', copy));
+          }
           return response;
         })
-        .catch(() => caches.match('/'))
+        .catch(() => (url.pathname === '/admin' || url.pathname === '/admin/' || url.pathname === '/admin.html')
+          ? new Response('অফলাইনে অ্যাডমিন প্যানেল খোলা যাবে না।', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+          : caches.match('/'))
     );
     return;
   }

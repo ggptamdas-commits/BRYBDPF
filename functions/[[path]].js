@@ -1166,6 +1166,12 @@ export async function onRequest(context) {
             return json({ error: "সকল প্রয়োজনীয় তথ্য সঠিকভাবে পূরণ করুন।" }, 400);
           }
 
+          const normalizedAge = parseInt(age, 10);
+          const normalizedGender = ['Male', 'Female', 'Other'].includes(gender) ? gender : 'Male';
+          if (!Number.isInteger(normalizedAge) || normalizedAge < 18 || normalizedAge > 65) {
+            return json({ error: "বয়স ১৮ থেকে ৬৫ বছরের মধ্যে দিন।" }, 400);
+          }
+
           const cleanPhone = normalizePhone(phone);
           if (!isValidPhone(cleanPhone)) {
             return json({ error: "সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।" }, 400);
@@ -1191,10 +1197,10 @@ export async function onRequest(context) {
             (thana || "").trim().slice(0, 120),
             (area || "").trim(),
             String(current_address).trim().slice(0, 300),
-            parseInt(age, 10) || 25,
-            gender || "Male",
+            normalizedAge,
+            normalizedGender,
             last_donation_date || null,
-            parseInt(total_donations || "0", 10),
+            Math.max(0, Math.min(1000, parseInt(total_donations || "0", 10) || 0)),
             agreed_future_donation ? 1 : 0,
             agreed_data_save ? 1 : 0
           ).run();
@@ -1229,8 +1235,17 @@ export async function onRequest(context) {
           const normalizedHemoglobin = String(hemoglobin || '').trim().slice(0, 30);
           const isHemoglobinUnknown = Number(hemoglobin_unknown) === 1 || hemoglobin_unknown === true;
           const normalizedRequesterAddress = String(requester_current_address || '').trim().slice(0, 300);
-          if (!patient_name || !blood_group || !district || !needed_by || !hospital_name || !contact_phone || !String(requester_name || '').trim() || !requester_blood_group || !requester_district || !requester_area || !normalizedRequesterAddress || (!normalizedHemoglobin && !isHemoglobinUnknown)) {
+          const normalizedPatientName = String(patient_name || '').trim().slice(0, 120);
+          const normalizedNeededBy = String(needed_by || '').trim().slice(0, 160);
+          const normalizedHospital = String(hospital_name || '').trim().slice(0, 180);
+          const normalizedLocation = String(location || '').trim().slice(0, 240);
+          const normalizedNote = String(note || '').trim().slice(0, 500);
+          const parsedUnits = Number(units);
+          if (!normalizedPatientName || !blood_group || !district || !normalizedNeededBy || !normalizedHospital || !contact_phone || !String(requester_name || '').trim() || !requester_blood_group || !requester_district || !requester_area || !normalizedRequesterAddress || (!normalizedHemoglobin && !isHemoglobinUnknown)) {
             return json({ error: "রোগী ও হাসপাতালের সকল প্রয়োজনীয় তথ্য পূরণ করুন।" }, 400);
+          }
+          if (!Number.isInteger(parsedUnits) || parsedUnits < 1 || parsedUnits > 10) {
+            return json({ error: "রক্তের পরিমাণ ১ থেকে ১০ ব্যাগের মধ্যে দিন।" }, 400);
           }
 
           const cleanPhone = normalizePhone(contact_phone);
@@ -1283,17 +1298,17 @@ export async function onRequest(context) {
           `);
 
           const reqInsertRes = await insertReqStmt.bind(
-            patient_name.trim(),
+            normalizedPatientName,
             blood_group.trim().toUpperCase(),
-            parseInt(units, 10) || 1,
+            parsedUnits,
             (district || "রংপুর").trim(),
             thana ? thana.trim() : "",
-            hospital_name.trim(),
-            location ? location.trim() : "",
+            normalizedHospital,
+            normalizedLocation,
             cleanPhone,
             urgency || "Urgent",
-            needed_by.trim(),
-            note ? note.trim() : "",
+            normalizedNeededBy,
+            normalizedNote,
             requesterName,
             requesterBloodGroup || null,
             normalizedRequesterAddress,
@@ -1321,17 +1336,17 @@ export async function onRequest(context) {
           ctx.waitUntil(sendTelegramAlert(env, {
             id: reqId,
             blood_group: blood_group.trim().toUpperCase(),
-            units: parseInt(units, 10) || 1,
-            patient_name: patient_name.trim(),
-            hospital_name: hospital_name.trim(),
+            units: parsedUnits,
+            patient_name: normalizedPatientName,
+            hospital_name: normalizedHospital,
             district: reqDist,
-            location: location || "",
+            location: normalizedLocation,
             thana: reqThana,
-            needed_by: needed_by.trim(),
+            needed_by: normalizedNeededBy,
             requester_name: requesterName || "স্বজন",
             contact_phone: cleanPhone,
             requester_current_address: normalizedRequesterAddress,
-            note: note || "",
+            note: normalizedNote,
             hemoglobin: isHemoglobinUnknown ? null : normalizedHemoglobin,
             hemoglobin_unknown: isHemoglobinUnknown ? 1 : 0
           }, matchedDonors || []));
@@ -1353,6 +1368,9 @@ export async function onRequest(context) {
       }
 
       if (path === "/api/admin/setup" && method === "POST") {
+        if (await isRateLimited(env, `admin-setup:${ip}`, 3, 60)) {
+          return json({ error: "অনেকবার সেটআপ চেষ্টা করা হয়েছে। পরে আবার চেষ্টা করুন।" }, 429);
+        }
         const count = (await env.DB.prepare("SELECT COUNT(*) as c FROM admins").first())?.c || 0;
         if (count > 0) {
           return json({ error: "অ্যাডমিন ইতিমধ্যে কনফিগার করা আছে। অনুগ্রহ করে লগইন করুন।" }, 400);
@@ -1551,6 +1569,7 @@ export async function onRequest(context) {
 
         if (path.startsWith("/api/admin/donors/") && path.endsWith("/toggle") && method === "POST") {
           const donorId = path.split("/")[4];
+          if (!/^\d+$/.test(donorId)) return json({ error: "অবৈধ ডোনার আইডি" }, 400);
           const donor = await env.DB.prepare("SELECT is_available, is_active FROM donors WHERE id = ?").bind(donorId).first();
           if (!donor) return json({ error: "ডোনার পাওয়া যায়নি" }, 404);
 
@@ -1565,6 +1584,9 @@ export async function onRequest(context) {
 
         if (path.startsWith("/api/admin/donors/") && method === "DELETE") {
           const donorId = path.split("/")[4];
+          if (!/^\d+$/.test(donorId)) return json({ error: "অবৈধ ডোনার আইডি" }, 400);
+          const donor = await env.DB.prepare("SELECT id FROM donors WHERE id = ?").bind(donorId).first();
+          if (!donor) return json({ error: "ডোনার পাওয়া যায়নি" }, 404);
           await env.DB.prepare("DELETE FROM donors WHERE id = ?").bind(donorId).run();
           invalidatePublicStatsCache(url.origin, ctx);
           return json({ success: true });
@@ -1610,6 +1632,7 @@ export async function onRequest(context) {
         if (path.startsWith("/api/admin/requests/") && path.endsWith("/match-donors") && method === "GET") {
           const parts = path.split("/");
           const reqId = parts[4];
+          if (!/^\d+$/.test(reqId)) return json({ error: "অবৈধ রিকোয়েস্ট আইডি" }, 400);
           const reqItem = await env.DB.prepare("SELECT * FROM blood_requests WHERE id = ?").bind(reqId).first();
           if (!reqItem) return json({ error: "অনুরোধ পাওয়া যায়নি" }, 404);
 
@@ -1633,10 +1656,13 @@ export async function onRequest(context) {
 
         if (path.startsWith("/api/admin/requests/") && path.endsWith("/status") && method === "POST") {
           const reqId = path.split("/")[4];
+          if (!/^\d+$/.test(reqId)) return json({ error: "অবৈধ রিকোয়েস্ট আইডি" }, 400);
           const { status } = await request.json();
           const allowedStatuses = new Set(['Pending', 'Matched', 'Fulfilled', 'Closed']);
           if (!allowedStatuses.has(status)) return json({ error: 'অবৈধ স্ট্যাটাস' }, 400);
 
+          const requestExists = await env.DB.prepare("SELECT id FROM blood_requests WHERE id = ?").bind(reqId).first();
+          if (!requestExists) return json({ error: "রিকোয়েস্ট পাওয়া যায়নি" }, 404);
           await env.DB.prepare(
             "UPDATE blood_requests SET status = ? WHERE id = ?"
           ).bind(status, reqId).run();
@@ -1724,6 +1750,17 @@ export async function onRequest(context) {
           await env.DB.prepare(
             "UPDATE admins SET password_hash = ?, salt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
           ).bind(newPasswordHash, newSalt, admin.id).run();
+
+          const authHeader = request.headers.get("Authorization") || "";
+          const currentToken = authHeader.startsWith("Bearer ")
+            ? authHeader.substring(7).trim()
+            : (request.headers.get("Cookie") || "").match(/brybdpf_session=([a-f0-9\-]+)/i)?.[1] || "";
+          if (currentToken) {
+            await env.DB.prepare("DELETE FROM sessions WHERE token != ? AND (admin_email = ? OR admin_email = ?)")
+              .bind(currentToken, user.email, user.admin_email || user.email).run();
+            await env.DB.prepare("DELETE FROM admin_sessions WHERE token != ? AND admin_id = ?")
+              .bind(currentToken, admin.id).run();
+          }
 
           return json({ success: true, message: "পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!" });
         }
