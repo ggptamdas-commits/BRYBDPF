@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "sync:html": "node scripts/sync-html.mjs",
+    "check:source": "node scripts/sync-html.mjs --check",
     "test:smoke": "node scripts/production-smoke.mjs"
   },
   "keywords": [
