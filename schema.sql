@@ -124,6 +124,20 @@ CREATE TABLE IF NOT EXISTS telegram_request_claims (
   claimed_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS telegram_alert_deliveries (
+  request_id INTEGER NOT NULL,
+  admin_uid TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  last_attempt_at TEXT,
+  next_attempt_at TEXT,
+  delivered_at TEXT,
+  PRIMARY KEY (request_id, admin_uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tg_delivery_status ON telegram_alert_deliveries(status, next_attempt_at);
+
 CREATE TABLE IF NOT EXISTS telegram_admin_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   admin_uid TEXT NOT NULL,
