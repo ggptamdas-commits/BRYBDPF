@@ -1,7 +1,7 @@
 const base = (process.env.BASE_URL || 'https://brybdpf.pages.dev').replace(/\/$/, '');
 
 const checks = [
-  { name: 'homepage', path: '/', expect: r => r.status === 200 && r.text.includes('BRYBDPF') },
+  { name: 'homepage', path: '/', expect: r => r.status === 200 && r.text.includes('BRYBDPF') && r.text.includes('ওমান প্রবাসী') && !r.text.includes('ওমার প্রবাসী') },
   { name: 'admin page', path: '/admin', expect: r => r.status === 200 && r.text.includes('অ্যাডমিন') },
   { name: 'public stats', path: '/api/stats', expect: r => r.status === 200 && Number.isFinite(r.json?.total_donors) },
   { name: 'database health', path: '/api/health', expect: r => r.status === 200 && r.json?.ok === true && r.json?.database === 'reachable' },
