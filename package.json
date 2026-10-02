@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test:smoke": "node scripts/production-smoke.mjs"
   },
   "keywords": [
     "blood-donation",

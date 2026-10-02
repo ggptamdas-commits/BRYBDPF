@@ -14,3 +14,5 @@ android-apk/build/
 android-apk/*.idsig
 android-apk/manifest-checksum.txt
 android-apk/store_icon.png
+
+.local-backups/
