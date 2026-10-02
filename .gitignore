@@ -16,7 +16,3 @@ android-apk/manifest-checksum.txt
 android-apk/store_icon.png
 
 .local-backups/
-
-# Automation secrets and generated files
-automation/google-apps-script/*.local
-automation/google-apps-script/*token*
