@@ -4,6 +4,7 @@ const checks = [
   { name: 'homepage', path: '/', expect: r => r.status === 200 && r.text.includes('BRYBDPF') },
   { name: 'admin page', path: '/admin', expect: r => r.status === 200 && r.text.includes('অ্যাডমিন') },
   { name: 'public stats', path: '/api/stats', expect: r => r.status === 200 && Number.isFinite(r.json?.total_donors) },
+  { name: 'database health', path: '/api/health', expect: r => r.status === 200 && r.json?.ok === true && r.json?.database === 'reachable' },
   { name: 'captcha', path: '/api/captcha', expect: r => r.status === 200 && r.json?.token && r.json?.question },
   { name: 'manifest', path: '/manifest.webmanifest', expect: r => r.status === 200 && r.json?.name && r.json?.start_url },
   { name: 'service worker', path: '/service-worker.js', expect: r => r.status === 200 && r.text.includes('brybdpf-shell-v2') && r.text.includes("url.pathname.startsWith('/api/')") },

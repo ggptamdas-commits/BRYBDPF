@@ -260,7 +260,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
 
     for (const uid of uids) {
       try {
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        const res = await telegramFetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -275,7 +275,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           console.error(`Telegram send to ${uid} failed:`, errData);
-          const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          const fallbackRes = await telegramFetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -448,6 +448,16 @@ function parseTelegramAdminUids(value) {
     .filter(v => /^-?\d+$/.test(v));
 }
 
+async function telegramFetch(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function tgSendMessage(token, chatId, text, inlineKeyboard = null, parseMode = "HTML") {
   const payload = {
     chat_id: chatId,
@@ -458,7 +468,7 @@ async function tgSendMessage(token, chatId, text, inlineKeyboard = null, parseMo
   if (inlineKeyboard) {
     payload.reply_markup = { inline_keyboard: inlineKeyboard };
   }
-  return fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  return telegramFetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -477,7 +487,7 @@ async function tgEditMessage(token, chatId, messageId, text, inlineKeyboard = nu
     payload.reply_markup = { inline_keyboard: inlineKeyboard };
   }
   try {
-    let res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    let res = await telegramFetch(`https://api.telegram.org/bot${token}/editMessageText`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -496,7 +506,7 @@ async function tgAnswerCallback(token, callbackQueryId, text = null) {
   try {
     const payload = { callback_query_id: callbackQueryId };
     if (text) payload.text = text;
-    return await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    return await telegramFetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -1088,7 +1098,7 @@ export async function onRequest(context) {
         if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
           await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, webhookSecret).run();
         }
-        const tgRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+        const tgRes = await telegramFetch(`https://api.telegram.org/bot${token}/setWebhook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1100,6 +1110,16 @@ export async function onRequest(context) {
         });
         const tgData = await tgRes.json();
         return json({ success: tgData.ok, result: tgData, webhookUrl });
+      }
+
+      if (path === "/api/health" && method === "GET") {
+        try {
+          await env.DB.prepare("SELECT 1 AS ok").first();
+          return json({ ok: true, database: "reachable", timestamp: new Date().toISOString() });
+        } catch (error) {
+          console.error("Health check database error:", error);
+          return json({ ok: false, database: "unavailable" }, 503);
+        }
       }
 
       if (path === "/api/captcha" && method === "GET") {
@@ -1707,7 +1727,7 @@ export async function onRequest(context) {
               if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
                 await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, webhookSecret).run();
               }
-              await fetch(`https://api.telegram.org/bot${data.telegram_bot_token}/setWebhook`, {
+              await telegramFetch(`https://api.telegram.org/bot${data.telegram_bot_token}/setWebhook`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -1776,7 +1796,7 @@ export async function onRequest(context) {
           if (!secretRow?.value && !env.TELEGRAM_WEBHOOK_SECRET) {
             await env.DB.prepare("INSERT OR REPLACE INTO admin_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(TELEGRAM_WEBHOOK_SECRET_KEY, webhookSecret).run();
           }
-          const webhookResponse = await fetch(`https://api.telegram.org/bot${tokenRes.value}/setWebhook`, {
+          const webhookResponse = await telegramFetch(`https://api.telegram.org/bot${tokenRes.value}/setWebhook`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: `${url.origin}/api/telegram/webhook`, secret_token: webhookSecret, drop_pending_updates: false, allowed_updates: ["message", "callback_query"] })
