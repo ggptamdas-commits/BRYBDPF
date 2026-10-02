@@ -1217,6 +1217,9 @@ export async function onRequest(context) {
           if (!name || !blood_group || !phone || !district || !String(current_address || '').trim()) {
             return json({ error: "সকল প্রয়োজনীয় তথ্য সঠিকভাবে পূরণ করুন।" }, 400);
           }
+          if (!agreed_future_donation || !agreed_data_save) {
+            return json({ error: "রেজিস্ট্রেশন সম্পন্ন করতে প্রয়োজনীয় সম্মতিতে টিক দিন।", code: "CONSENT_REQUIRED" }, 400);
+          }
 
           const normalizedAge = parseInt(age, 10);
           const normalizedGender = ['Male', 'Female', 'Other'].includes(gender) ? gender : 'Male';
@@ -1302,6 +1305,9 @@ export async function onRequest(context) {
           const parsedUnits = Number(units);
           if (!normalizedPatientName || !blood_group || !district || !normalizedNeededBy || !normalizedHospital || !contact_phone || !String(requester_name || '').trim() || !requester_blood_group || !requester_district || !requester_area || !normalizedRequesterAddress || (!normalizedHemoglobin && !isHemoglobinUnknown)) {
             return json({ error: "রোগী ও হাসপাতালের সকল প্রয়োজনীয় তথ্য পূরণ করুন।" }, 400);
+          }
+          if (!agreed_future_donation || !agreed_data_save) {
+            return json({ error: "আবেদন সম্পন্ন করতে প্রয়োজনীয় সম্মতিতে টিক দিন।", code: "CONSENT_REQUIRED" }, 400);
           }
           if (!VALID_BLOOD_GROUPS.has(normalizedPatientBloodGroup) || !VALID_BLOOD_GROUPS.has(requesterBloodGroup)) {
             return json({ error: "সঠিক ব্লাড গ্রুপ নির্বাচন করুন।", code: "INVALID_BLOOD_GROUP" }, 400);
