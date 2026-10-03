@@ -1877,7 +1877,9 @@ export async function onRequest(context) {
             body: JSON.stringify({ url: `${url.origin}/api/telegram/webhook`, secret_token: webhookSecret, drop_pending_updates: false, allowed_updates: ["message", "callback_query"] })
           });
           const webhookData = await webhookResponse.json().catch(() => ({}));
+          const testRequestId = -Date.now();
           const testRequest = {
+            id: testRequestId,
             patient_name: "পরীক্ষামূলক রোগী",
             blood_group: "O+",
             units: 1,
@@ -1896,7 +1898,12 @@ export async function onRequest(context) {
           const sampleDonors = [
             { name: "করিম হোসেন", blood_group: "O+", district: "রংপুর", area: "মেডিকেল মোড়", phone: "01711111111" }
           ];
-          const delivery = await sendTelegramAlert(env, testRequest, sampleDonors);
+          let delivery;
+          try {
+            delivery = await sendTelegramAlert(env, testRequest, sampleDonors);
+          } finally {
+            await env.DB.prepare("DELETE FROM telegram_alert_deliveries WHERE request_id = ?").bind(testRequestId).run().catch(() => {});
+          }
           return json({
             success: (delivery?.textSent || 0) > 0,
             recipients: testUids.length,
