@@ -298,9 +298,14 @@
                 <p id="currentTgTokenMasked" class="text-xs text-gray-400 mt-1"></p>
               </div>
               <div>
-                <label class="block text-xs font-bold text-gray-700 uppercase mb-1">অ্যাডমিন চ্যাট / চ্যানেল আইডি (Uids)</label>
-                <input type="text" id="settingTgUids" class="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="987654321, 123456789">
-                <span class="text-xs text-gray-400">একাধিক আইডি হলে কমা (,) দিয়ে লিখুন</span>
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <label class="block text-xs font-bold text-gray-700 uppercase">টেলিগ্রাম অ্যাডমিন তালিকা</label>
+                  <button type="button" onclick="addTelegramAdminRow()" class="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold transition">
+                    <i class="fa-solid fa-plus"></i> নতুন অ্যাডমিন
+                  </button>
+                </div>
+                <div id="telegramAdminRows" class="space-y-2"></div>
+                <span class="text-xs text-gray-400">প্রতিটি আইডির পাশে নাম লিখুন। নাম খালি থাকলেও Telegram workflow কাজ করবে।</span>
               </div>
               <div class="flex gap-2">
                 <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-sm transition">
@@ -972,6 +977,72 @@
       });
     }
 
+    let telegramAdminRowSeq = 0;
+
+    function parseTelegramAdminEntries(value) {
+      let parsed = null;
+      try { parsed = JSON.parse(String(value || '')); } catch (e) {}
+      const raw = Array.isArray(parsed) ? parsed : String(value || '').split(/[\s,;]+/).filter(Boolean);
+      const seen = new Set();
+      return raw.map(entry => {
+        const id = typeof entry === 'string' ? entry.trim() : String(entry?.id ?? entry?.uid ?? '').trim();
+        const name = typeof entry === 'string' ? '' : String(entry?.name ?? '').trim();
+        return { id, name };
+      }).filter(entry => /^-?\d+$/.test(entry.id) && !seen.has(entry.id) && seen.add(entry.id));
+    }
+
+    function renderTelegramAdminRows(entries) {
+      const container = document.getElementById('telegramAdminRows');
+      if (!container) return;
+      const rows = entries.length ? entries : [{ id: '', name: '' }];
+      container.innerHTML = rows.map((entry, index) => `
+        <div class="telegram-admin-row flex items-center gap-2" data-row="${++telegramAdminRowSeq}">
+          <span class="w-6 text-center text-xs font-black text-gray-400">${index + 1}.</span>
+          <input type="text" data-admin-name value="${escapeHtml(entry.name)}" class="min-w-0 flex-1 px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="অ্যাডমিনের নাম">
+          <input type="text" data-admin-id value="${escapeHtml(entry.id)}" inputmode="numeric" class="min-w-0 flex-1 px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Telegram ID">
+          <button type="button" onclick="removeTelegramAdminRow(this)" class="w-9 h-9 shrink-0 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition" title="অ্যাডমিন বাদ দিন">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function addTelegramAdminRow() {
+      const container = document.getElementById('telegramAdminRows');
+      const entries = container ? [...container.querySelectorAll('.telegram-admin-row')].map(row => ({
+        id: row.querySelector('[data-admin-id]')?.value.trim() || '',
+        name: row.querySelector('[data-admin-name]')?.value.trim() || ''
+      })) : [];
+      entries.push({ id: '', name: '' });
+      renderTelegramAdminRows(entries);
+      const ids = document.querySelectorAll('[data-admin-id]');
+      ids[ids.length - 1]?.focus();
+    }
+
+    function removeTelegramAdminRow(button) {
+      const row = button.closest('.telegram-admin-row');
+      const container = document.getElementById('telegramAdminRows');
+      if (row) row.remove();
+      if (container && !container.querySelector('.telegram-admin-row')) renderTelegramAdminRows([]);
+      container?.querySelectorAll('.telegram-admin-row').forEach((item, index) => {
+        const number = item.querySelector('span');
+        if (number) number.textContent = `${index + 1}.`;
+      });
+    }
+
+    function collectTelegramAdminEntries() {
+      const seen = new Set();
+      const entries = [...document.querySelectorAll('.telegram-admin-row')].map(row => ({
+        id: row.querySelector('[data-admin-id]')?.value.trim() || '',
+        name: row.querySelector('[data-admin-name]')?.value.trim() || ''
+      })).filter(entry => {
+        if (!/^\-?\d+$/.test(entry.id) || seen.has(entry.id)) return false;
+        seen.add(entry.id);
+        return true;
+      });
+      return entries;
+    }
+
     // Load Settings
     async function loadSettings() {
       try {
@@ -980,9 +1051,7 @@
           if (data.telegram_bot_token_masked) {
             document.getElementById('currentTgTokenMasked').textContent = 'বর্তমান টোকেন: ' + data.telegram_bot_token_masked;
           }
-          if (data.telegram_admin_uids) {
-            document.getElementById('settingTgUids').value = data.telegram_admin_uids;
-          }
+          renderTelegramAdminRows(parseTelegramAdminEntries(data.telegram_admin_uids));
         }
       } catch (e) {}
     }
@@ -990,7 +1059,12 @@
     async function saveSettings(e) {
       e.preventDefault();
       const token = document.getElementById('settingTgToken').value;
-      const uids = document.getElementById('settingTgUids').value;
+      const entries = collectTelegramAdminEntries();
+      if (!entries.length) {
+        showToast('কমপক্ষে একটি বৈধ Telegram admin ID দিন', 'error');
+        return;
+      }
+      const uids = JSON.stringify(entries);
 
       try {
         const res = await fetch('/api/admin/settings', {

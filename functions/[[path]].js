@@ -473,11 +473,20 @@ function escapeXml(str) {
   return String(str ?? '').replace(/[<>&'\"]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[ch]));
 }
 
+function parseTelegramAdminEntries(value) {
+  let parsed = null;
+  try { parsed = JSON.parse(String(value || '')); } catch (_) {}
+  const raw = Array.isArray(parsed) ? parsed : String(value || '').split(/[\s,;]+/).filter(Boolean);
+  const seen = new Set();
+  return raw.map(entry => {
+    const id = typeof entry === 'string' ? entry.trim() : String(entry?.id ?? entry?.uid ?? '').trim();
+    const name = typeof entry === 'string' ? '' : String(entry?.name ?? '').trim();
+    return { id, name };
+  }).filter(entry => /^-?\d+$/.test(entry.id) && !seen.has(entry.id) && seen.add(entry.id));
+}
+
 function parseTelegramAdminUids(value) {
-  return String(value || '')
-    .split(/[\s,;]+/)
-    .map(v => v.trim())
-    .filter(v => /^-?\d+$/.test(v));
+  return parseTelegramAdminEntries(value).map(entry => entry.id);
 }
 
 async function telegramFetch(url, options = {}, timeoutMs = 12000) {
