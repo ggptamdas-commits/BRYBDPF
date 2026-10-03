@@ -2,10 +2,11 @@
 <html lang="bn" class="scroll-smooth">
 <head>
   <script>
-    if (window.location.search && window.location.search.includes('utm_')) {
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid', 'dclid', 'msclkid', 'mc_cid', 'mc_eid', 'igshid', 'srsltid', 'ttclid', 'twclid'];
+    if (window.location.search && trackingParams.some(p => new URLSearchParams(window.location.search).has(p))) {
       try {
         const u = new URL(window.location.href);
-        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'].forEach(p => u.searchParams.delete(p));
+        trackingParams.forEach(p => u.searchParams.delete(p));
         const cleanSearch = u.searchParams.toString();
         window.history.replaceState({}, document.title, u.pathname + (cleanSearch ? '?' + cleanSearch : '') + u.hash);
       } catch (e) {}
