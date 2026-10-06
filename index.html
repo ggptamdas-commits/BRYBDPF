@@ -176,7 +176,7 @@
           </div>
           <div>
             <h2 class="text-2xl font-bold tracking-tight">জরুরি রক্তের রিকোয়েস্ট পাঠান (রংপুর বিভাগ)</h2>
-            <p class="text-rose-100 text-sm mt-0.5">হাসপাতালের জেলা ও থানা নির্বাচন করলে স্বয়ংক্রিয়ভাবে নিকটবর্তী ডোনারদের প্রথম অগ্রাধিকার দেওয়া হবে।</p>
+            <p class="text-rose-100 text-sm mt-0.5">চিকিৎসাধীন জেলা নির্বাচন করলে একই জেলার প্রস্তুত ডোনারদের প্রথম অগ্রাধিকার দেওয়া হবে।</p>
           </div>
         </div>
       </div>
@@ -185,24 +185,27 @@
       <form id="blood-request-form" onsubmit="submitBloodRequest(event)" class="p-5 sm:p-6 space-y-5 request-form-readable">
         <div id="request-alert-box" class="hidden p-4 rounded-xl text-sm font-semibold"></div>
 
-        <div id="request-progress" class="rounded-2xl border border-rose-100 bg-rose-50/60 p-3 sm:p-4" aria-label="রক্তের আবেদন ধাপ">
-          <div class="grid grid-cols-2 gap-2 sm:gap-3 text-center">
-            <div data-request-progress="1" class="request-progress-step rounded-xl bg-crimson-600 px-2 py-2 text-[11px] sm:text-xs font-bold text-white shadow-sm transition">
-              <span class="block text-[10px] opacity-80">ধাপ ১</span>আবেদনের তথ্য
-            </div>
-            <div data-request-progress="2" class="request-progress-step rounded-xl bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-slate-500 ring-1 ring-slate-200 transition">
-              <span class="block text-[10px] opacity-70">ধাপ ২</span>নিশ্চিত করুন
-            </div>
-          </div>
-          <p id="request-progress-note" class="mt-2 text-center text-[11px] text-slate-500">রক্তের আবেদনের তথ্য পূরণ করুন</p>
-        </div>
-
-        <!-- Part 1: Minimal blood request information -->
         <div data-request-panel="1" class="request-step-panel p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-4">
           <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-crimson-600"></span>
-            ১. রক্তের আবেদনের তথ্য
+            জরুরি রক্তের আবেদনের তথ্য
           </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-crimson-700 mb-1">👤 রোগীর নাম *</label>
+              <input type="text" id="req-patient-name" required placeholder="রোগীর পুরো নাম লিখুন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-crimson-700 mb-1">🗺️ রোগী কোন জেলায় চিকিৎসাধীন? *</label>
+              <select id="req-district" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm font-semibold bg-white transition">
+                <option value="">চিকিৎসাধীন জেলা নির্বাচন করুন</option>
+                <option value="রংপুর" selected>রংপুর</option><option value="নীলফামারী">নীলফামারী</option>
+                <option value="দিনাজপুর">দিনাজপুর</option><option value="কুড়িগ্রাম">কুড়িগ্রাম</option>
+                <option value="লালমনিরহাট">লালমনিরহাট</option><option value="গাইবান্ধা">গাইবান্ধা</option>
+                <option value="ঠাকুরগাঁও">ঠাকুরগাঁও</option><option value="পঞ্চগড়">পঞ্চগড়</option>
+              </select>
+            </div>
+          </div>
           <div>
             <label class="block text-xs font-bold text-crimson-700 mb-1">💁 রোগীর সমস্যা *</label>
             <textarea id="req-note" required rows="2" placeholder="উদাহরণ: অপারেশনের জন্য জরুরি রক্ত প্রয়োজন" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition"></textarea>
@@ -234,19 +237,24 @@
               <span class="text-sm font-semibold text-slate-700">হিমোগ্লোবিন জানা নেই</span>
             </label>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">📆 রক্তদানের তারিখ *</label>
-              <input type="date" id="req-needed-date" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">📆 রক্তদানের তারিখ *</label>
+            <div class="grid grid-cols-3 gap-2">
+              <input type="number" id="req-needed-day" min="1" max="31" required placeholder="দিন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+              <input type="number" id="req-needed-month" min="1" max="12" required placeholder="মাস" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+              <input type="number" id="req-needed-year" min="2000" max="2100" required placeholder="বছর" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
             </div>
+            <span class="text-[11px] text-slate-400 mt-0.5 block">দিন / মাস / বছর — সরাসরি টাইপ করুন</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">⌚ রক্তদানের সময় *</label>
               <input type="time" id="req-needed-time" required class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
             </div>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">🏥 রক্তদানের স্থান *</label>
-            <input type="text" id="req-location" required placeholder="হাসপাতাল, থানা/এলাকা ও ওয়ার্ড লিখুন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">🏥 রক্তদানের স্থান *</label>
+              <input type="text" id="req-location" required placeholder="হাসপাতাল, থানা/এলাকা ও ওয়ার্ড লিখুন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+            </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -259,21 +267,6 @@
               <span class="text-[11px] text-slate-400 mt-0.5 block">একটি নম্বর থেকে ২৪ ঘণ্টায় একটি আবেদন করা যাবে।</span>
             </div>
           </div>
-          <button type="button" onclick="nextRequestStep()" class="w-full sm:w-auto sm:ml-auto tap-target px-6 py-3 rounded-xl bg-crimson-600 hover:bg-crimson-700 text-white text-sm font-bold shadow transition">পরবর্তী: নিশ্চিত করুন →</button>
-        </div>
-
-        <!-- Part 2: Consent and anti-bot verification -->
-        <div data-request-panel="2" class="request-step-panel hidden space-y-5">
-          <div class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 text-sm text-emerald-900">
-            <p class="font-bold">শেষ ধাপ: তথ্য যাচাই ও আবেদন পাঠান</p>
-            <p class="mt-1 text-xs text-emerald-800">আপনার দেওয়া তথ্য শুধু রক্তের আবেদন সমন্বয় ও যোগাযোগের জন্য ব্যবহার করা হবে। আবেদনকারীকে ডোনার তালিকায় যুক্ত করা হবে না।</p>
-          </div>
-          <div class="space-y-3 pt-2">
-            <label class="flex items-start gap-3 cursor-pointer group">
-              <input type="checkbox" id="req-agree-2" required class="mt-1 w-5 h-5 shrink-0 rounded text-crimson-600 focus:ring-crimson-500 border-slate-300">
-              <span class="text-sm sm:text-base text-slate-700 font-medium leading-relaxed group-hover:text-slate-900">আমি সম্মত—আমার দেওয়া তথ্য জরুরি রক্তের আবেদন সমন্বয় ও যোগাযোগের কাজে নিরাপদে ব্যবহার করা যাবে।</span>
-            </label>
-          </div>
           <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div class="flex items-center gap-2">
               <span class="text-xs font-semibold text-slate-600">রোবট যাচাই (ক্যাপচা):</span>
@@ -283,7 +276,6 @@
             <div class="w-full sm:w-44"><input type="hidden" id="captcha-token"><input type="number" id="captcha-answer" required placeholder="যোগফল লিখুন" class="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-mono text-center outline-none focus:ring-2 focus:ring-crimson-500 bg-white"></div>
           </div>
           <button type="submit" id="request-submit-btn" class="tap-target w-full py-4 rounded-2xl bg-gradient-to-r from-crimson-600 to-rose-600 hover:from-crimson-700 hover:to-rose-700 text-white font-bold text-base shadow-lg shadow-crimson-600/30 hover:shadow-xl transition flex items-center justify-center gap-2">জরুরি রিকোয়েস্ট সাবমিট করুন</button>
-          <button type="button" onclick="previousRequestStep()" class="w-full tap-target py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 text-sm font-bold transition hover:bg-slate-50">← আবেদনের তথ্য সংশোধন করুন</button>
         </div>
       </form>
     </div>
@@ -729,48 +721,6 @@
       input.classList.toggle('bg-slate-100', unknown.checked);
     }
 
-    let requestStep = 1;
-    const requestStepNotes = {
-      1: 'রক্তের আবেদনের প্রয়োজনীয় তথ্য পূরণ করুন',
-      2: 'সম্মতি দিন, ক্যাপচা পূরণ করুন এবং আবেদন পাঠান'
-    };
-
-    function showRequestStep(step) {
-      requestStep = Math.min(2, Math.max(1, Number(step) || 1));
-      document.querySelectorAll('[data-request-panel]').forEach(panel => {
-        panel.classList.toggle('hidden', Number(panel.dataset.requestPanel) !== requestStep);
-      });
-      document.querySelectorAll('[data-request-progress]').forEach(item => {
-        const active = Number(item.dataset.requestProgress) === requestStep;
-        const complete = Number(item.dataset.requestProgress) < requestStep;
-        item.classList.toggle('bg-crimson-600', active || complete);
-        item.classList.toggle('text-white', active || complete);
-        item.classList.toggle('shadow-sm', active || complete);
-        item.classList.toggle('bg-white', !active && !complete);
-        item.classList.toggle('text-slate-500', !active && !complete);
-        item.setAttribute('aria-current', active ? 'step' : 'false');
-      });
-      const note = document.getElementById('request-progress-note');
-      if (note) note.textContent = requestStepNotes[requestStep];
-      const form = document.getElementById('blood-request-form');
-      if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    function nextRequestStep() {
-      const panel = document.querySelector(`[data-request-panel="${requestStep}"]`);
-      if (panel) {
-        const fields = Array.from(panel.querySelectorAll('input, select, textarea'));
-        const invalid = fields.find(field => !field.disabled && !field.checkValidity());
-        if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
-      }
-      showRequestStep(requestStep + 1);
-      if (requestStep === 3 && !document.getElementById('captcha-token')?.value) loadCaptcha();
-    }
-
-    function previousRequestStep() {
-      showRequestStep(requestStep - 1);
-    }
-
     function openDonorModal() {
       document.getElementById('donor-modal').classList.remove('hidden');
       loadDonorCaptcha();
@@ -788,8 +738,11 @@
       const alertBox = document.getElementById('request-alert-box');
       const btn = document.getElementById('request-submit-btn');
 
-      const patientDist = 'রংপুর';
+      const patientDist = document.getElementById('req-district').value || 'রংপুর';
       const fullLoc = document.getElementById('req-location').value.trim();
+      const neededDay = document.getElementById('req-needed-day').value.padStart(2, '0');
+      const neededMonth = document.getElementById('req-needed-month').value.padStart(2, '0');
+      const neededYear = document.getElementById('req-needed-year').value;
       const hemoglobinInput = document.getElementById('req-hemoglobin');
       const hemoglobinUnknown = document.getElementById('req-hemoglobin-unknown')?.checked || false;
       const hemoglobin = hemoglobinInput?.value.trim() || '';
@@ -802,12 +755,12 @@
       hemoglobinInput?.classList.remove('border-red-500', 'ring-2', 'ring-red-200');
 
       const payload = {
-        patient_name: 'রোগী',
+        patient_name: document.getElementById('req-patient-name').value.trim(),
         blood_group: document.getElementById('req-patient-blood-group').value,
         units: parseInt(document.getElementById('req-units').value, 10),
         district: patientDist,
         thana: '',
-        needed_by: `${document.getElementById('req-needed-date').value} ${document.getElementById('req-needed-time').value}`,
+        needed_by: `${neededDay}/${neededMonth}/${neededYear} ${document.getElementById('req-needed-time').value}`,
         hospital_name: fullLoc,
         location: fullLoc,
         hemoglobin: hemoglobinUnknown ? null : hemoglobin,
@@ -817,7 +770,7 @@
         requester_name: document.getElementById('req-reference-name').value.trim(),
         contact_phone: document.getElementById('req-phone').value,
         agreed_future_donation: 0,
-        agreed_data_save: document.getElementById('req-agree-2').checked ? 1 : 0,
+        agreed_data_save: 1,
         captcha_token: document.getElementById('captcha-token').value,
         captcha_answer: document.getElementById('captcha-answer').value
       };
@@ -854,7 +807,6 @@
         showCustomDialog('success', 'রক্তের আবেদন সম্পন্ন', data.message || 'আপনার জরুরি রক্তের আবেদন সফলভাবে গ্রহণ করা হয়েছে। নিকটবর্তী ডোনারদের জানানো হচ্ছে।');
         document.getElementById('blood-request-form').reset();
         toggleHemoglobinField();
-        showRequestStep(1);
         loadCaptcha(true);
         loadStats(true);
       } catch (err) {
@@ -970,6 +922,8 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       loadStats();
+      const yearField = document.getElementById('req-needed-year');
+      if (yearField) yearField.value = String(new Date().getFullYear());
       loadCaptcha();
       updateThanaOptions('reg-district', 'reg-area', false);
     });

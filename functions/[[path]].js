@@ -104,6 +104,7 @@ async function sha256Hex(message) {
 
 const DEFAULT_CAPTCHA_SECRET = "";
 const VALID_BLOOD_GROUPS = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
+const VALID_REQUEST_DISTRICTS = new Set(["রংপুর", "নীলফামারী", "দিনাজপুর", "কুড়িগ্রাম", "লালমনিরহাট", "গাইবান্ধা", "ঠাকুরগাঁও", "পঞ্চগড়"]);
 
 async function generateCaptcha(env) {
   const num1 = Math.floor(Math.random() * 8) + 2;
@@ -232,7 +233,9 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const reqCleanPhone = (requestData.contact_phone || "").replace(/[^0-9]/g, "");
     const reqWaNumber = reqCleanPhone.startsWith("88") ? reqCleanPhone : (reqCleanPhone.startsWith("0") ? "88" + reqCleanPhone : reqCleanPhone);
     const waPatientUrl = `https://wa.me/${reqWaNumber}`;
+    const safePatient = escapeHtml(requestData.patient_name || "রোগী");
     const safeBg = escapeHtml(requestData.blood_group);
+    const safeDist = escapeHtml(requestData.district || "");
     const safeLoc = escapeHtml(requestData.location);
     const safeNeed = escapeHtml(requestData.needed_by);
     const safeHemoglobin = requestData.hemoglobin_unknown ? "জানা নেই" : escapeHtml(requestData.hemoglobin || "তথ্য নেই");
@@ -245,7 +248,9 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
     const messageHtml = `🚨 <b>জরুরি রক্তের আবেদন — BRYBDPF</b> 🚨\n` +
       `────────────────────────────\n` +
       `🩸 <b>প্রয়োজনীয় রক্ত:</b> <code>${safeBg}</code> (${requestData.units || 1} ব্যাগ)\n` +
+      `👤 <b>রোগীর নাম:</b> ${safePatient}\n` +
       `💁 <b>রোগীর সমস্যা:</b> ${safeNote}\n` +
+      `🗺️ <b>চিকিৎসাধীন জেলা:</b> ${safeDist}\n` +
       `🏥 <b>রক্তদানের স্থান:</b> ${safeLoc}\n` +
       `🧪 <b>হিমোগ্লোবিন:</b> ${safeHemoglobin}\n` +
       `📆 <b>রক্তদানের তারিখ ও সময়:</b> ${safeNeed}\n` +
@@ -732,7 +737,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const claimMap = new Map((claims.results || []).map(c => [Number(c.request_id), c.admin_uid]));
       let text = "📋 <b>অপেক্ষমাণ রক্তের রিকোয়েস্ট</b>\n────────────────────\n";
       if (!rows.length) text += "✅ এখন কোনো Pending বা Matched রিকোয়েস্ট নেই।";
-      else text += rows.map((r, i) => `${i + 1}. ${String(r.urgency || 'Urgent').toLowerCase() === 'urgent' ? '🚨' : '🟡'} <b>#${r.id} ${escapeHtml(r.blood_group)}</b>\n   💁 ${escapeHtml(r.note || 'রোগীর সমস্যা দেওয়া হয়নি')}\n   🏥 ${escapeHtml(r.location || r.hospital_name || 'স্থান দেওয়া হয়নি')}\n   🧪 Hb: ${r.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(r.hemoglobin || 'তথ্য নেই')}\n   📌 ${escapeHtml(r.status)} • ${escapeHtml(r.needed_by)} • ${claimMap.has(Number(r.id)) ? `👤 ${escapeHtml(claimMap.get(Number(r.id)))}` : '🙋 Unassigned'}`).join("\n\n");
+      else text += rows.map((r, i) => `${i + 1}. ${String(r.urgency || 'Urgent').toLowerCase() === 'urgent' ? '🚨' : '🟡'} <b>#${r.id} ${escapeHtml(r.blood_group)}</b> — ${escapeHtml(r.patient_name || 'রোগী')}\n   💁 ${escapeHtml(r.note || 'রোগীর সমস্যা দেওয়া হয়নি')}\n   🗺️ ${escapeHtml(r.district || 'জেলা দেওয়া হয়নি')} • 🏥 ${escapeHtml(r.location || r.hospital_name || 'স্থান দেওয়া হয়নি')}\n   🧪 Hb: ${r.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(r.hemoglobin || 'তথ্য নেই')}\n   📌 ${escapeHtml(r.status)} • ${escapeHtml(r.needed_by)} • ${claimMap.has(Number(r.id)) ? `👤 ${escapeHtml(claimMap.get(Number(r.id)))}` : '🙋 Unassigned'}`).join("\n\n");
       const kb = rows.flatMap(r => {
         const claim = claimMap.get(Number(r.id));
         return [[
@@ -1302,11 +1307,11 @@ export async function onRequest(context) {
           if (!normalizedPatientName || !blood_group || !district || !normalizedNeededBy || !normalizedHospital || !normalizedLocation || !contact_phone || !String(requester_name || '').trim() || !normalizedNote || (!normalizedHemoglobin && !isHemoglobinUnknown)) {
             return json({ error: "আবেদনের সকল প্রয়োজনীয় তথ্য পূরণ করুন।" }, 400);
           }
-          if (!agreed_data_save) {
-            return json({ error: "আবেদন সম্পন্ন করতে সম্মতিতে টিক দিন।", code: "CONSENT_REQUIRED" }, 400);
-          }
           if (!VALID_BLOOD_GROUPS.has(normalizedPatientBloodGroup)) {
             return json({ error: "সঠিক ব্লাড গ্রুপ নির্বাচন করুন।", code: "INVALID_BLOOD_GROUP" }, 400);
+          }
+          if (!VALID_REQUEST_DISTRICTS.has(String(district || '').trim())) {
+            return json({ error: "চিকিৎসাধীন সঠিক জেলা নির্বাচন করুন।", code: "INVALID_DISTRICT" }, 400);
           }
           if (!Number.isInteger(parsedUnits) || parsedUnits < 1 || parsedUnits > 10) {
             return json({ error: "রক্তের পরিমাণ ১ থেকে ১০ ব্যাগের মধ্যে দিন।" }, 400);
