@@ -2,6 +2,7 @@ const base = (process.env.BASE_URL || 'https://brybdpf.pages.dev').replace(/\/$/
 
 const checks = [
   { name: 'homepage', path: '/', expect: r => r.status === 200 && r.text.includes('BRYBDPF') && r.text.includes('ওমান প্রবাসী') && !r.text.includes('ওমার প্রবাসী') },
+  { name: 'minimal request form', path: '/', expect: r => r.status === 200 && ['req-note', 'req-patient-blood-group', 'req-units', 'req-hemoglobin', 'req-needed-date', 'req-needed-time', 'req-location', 'req-reference-name', 'req-phone'].every(id => r.text.includes(`id="${id}"`)) && !r.text.includes('ভবিষ্যৎ রক্তদাতা নিবন্ধন') && !r.text.includes('req-applicant-') },
   { name: 'admin page', path: '/admin', expect: r => r.status === 200 && r.text.includes('অ্যাডমিন') },
   { name: 'public stats', path: '/api/stats', expect: r => r.status === 200 && Number.isFinite(r.json?.total_donors) },
   { name: 'database health', path: '/api/health', expect: r => r.status === 200 && r.json?.ok === true && r.json?.database === 'reachable' },
