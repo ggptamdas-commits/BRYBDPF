@@ -203,9 +203,12 @@
             </div>
           </div>
           <div>
-            <label class="block text-xs font-bold text-crimson-700 mb-1">👤 রোগীর নাম ও রোগীর সমস্যা *</label>
-            <textarea id="req-patient-details" required rows="3" placeholder="প্রথম লাইনে রোগীর নাম লিখুন&#10;পরের লাইনে রোগীর সমস্যা লিখুন" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition"></textarea>
-            <span class="text-[11px] text-slate-400 mt-0.5 block">নাম ও সমস্যাটি আলাদা লাইনে লিখলে Telegram-এ সুন্দরভাবে দেখাবে</span>
+            <label class="block text-xs font-bold text-crimson-700 mb-1">👤 রোগীর নাম *</label>
+            <input type="text" id="req-patient-name" required placeholder="রোগীর পুরো নাম লিখুন" class="w-full h-11 px-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-crimson-700 mb-1">💁 রোগীর সমস্যা *</label>
+            <textarea id="req-patient-problem" required rows="2" placeholder="উদাহরণ: অপারেশনের জন্য জরুরি রক্ত প্রয়োজন" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-crimson-500 outline-none text-sm bg-white transition"></textarea>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -737,10 +740,8 @@
 
       const patientDist = document.getElementById('req-district').value || 'রংপুর';
       const fullLoc = document.getElementById('req-location').value.trim();
-      const patientDetails = document.getElementById('req-patient-details').value.trim();
-      const patientDetailLines = patientDetails.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-      const patientName = (patientDetailLines[0] || 'রোগী').slice(0, 120);
-      const patientProblem = (patientDetailLines.slice(1).join(' ') || patientDetails).slice(0, 500);
+      const patientName = document.getElementById('req-patient-name').value.trim();
+      const patientProblem = document.getElementById('req-patient-problem').value.trim();
       const neededDay = document.getElementById('req-needed-day').value.padStart(2, '0');
       const neededMonth = document.getElementById('req-needed-month').value.padStart(2, '0');
       const neededYear = document.getElementById('req-needed-year').value;
