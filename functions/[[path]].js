@@ -255,7 +255,7 @@ async function sendTelegramAlert(env, requestData, matchedDonors) {
       `🧪 <b>হিমোগ্লোবিন:</b> ${safeHemoglobin}\n` +
       `📆 <b>রক্তদানের তারিখ ও সময়:</b> ${safeNeed}\n` +
       `────────────────────────────\n` +
-      `☎ <b>রেফারেন্স:</b> ${safeReq} (📞 <a href="tel:${reqCleanPhone}">${safeReqPhone}</a>)\n` +
+      `☎ <b>আবেদনকারীর নাম:</b> ${safeReq} (📞 <a href="tel:${reqCleanPhone}">${safeReqPhone}</a>)\n` +
       `────────────────────────────\n` +
       `📲 <b>আবেদনকারীর সাথে সরাসরি চ্যাট:</b> <a href="${waPatientUrl}"><b>WhatsApp ওপেন করুন</b></a>\n` +
       `────────────────────────────\n` +
@@ -694,7 +694,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const text = `🧾 <b>রিকোয়েস্ট #${req.id} বিস্তারিত</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
         `💁 সমস্যা: <b>${escapeHtml(req.note || 'দেওয়া হয়নি')}</b>\n🩸 রক্ত: <code>${escapeHtml(req.blood_group)}</code> • ${req.units || 1} ব্যাগ\n` +
         `🚨 Priority: <b>${escapeHtml(req.urgency || 'Urgent')}</b>\n📍 ${location}\n⏰ ${escapeHtml(req.needed_by)}\n` +
-        `☎ রেফারেন্স: ${escapeHtml(req.requester_name || 'স্বজন')}\n📞 <code>${escapeHtml(req.contact_phone)}</code>\n🧪 হিমোগ্লোবিন: <b>${req.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(req.hemoglobin || 'তথ্য নেই')}</b>\n📌 Status: <b>${escapeHtml(status)}</b>\n` +
+        `☎ আবেদনকারীর নাম: ${escapeHtml(req.requester_name || 'স্বজন')}\n📞 <code>${escapeHtml(req.contact_phone)}</code>\n🧪 হিমোগ্লোবিন: <b>${req.hemoglobin_unknown ? 'জানা নেই' : escapeHtml(req.hemoglobin || 'তথ্য নেই')}</b>\n📌 Status: <b>${escapeHtml(status)}</b>\n` +
         `👤 Assigned: <b>${claim ? escapeHtml(claim.admin_uid) : 'কেউ নয়'}</b>${claim?.claimed_at ? `\n🕒 Claimed: ${escapeHtml(claim.claimed_at)}` : ''}` +
         (req.note ? `\n📝 Note: ${escapeHtml(req.note)}` : '');
       const kb = [
