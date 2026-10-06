@@ -455,13 +455,15 @@ function formatTelegramDonor(donor, index = null, proximity = true) {
   const cleanPhone = String(donor.phone || '').replace(/[^0-9]/g, '');
   const waNumber = cleanPhone.startsWith('88') ? cleanPhone : (cleanPhone.startsWith('0') ? `88${cleanPhone}` : cleanPhone);
   const waUrl = `https://wa.me/${waNumber}`;
-  const address = truncateTelegramText(donor.current_address || [donor.area, donor.district].filter(Boolean).join(', ') || 'ঠিকানা দেওয়া নেই');
+  const currentAddress = truncateTelegramText(donor.current_address || 'ঠিকানা দেওয়া নেই');
+  const permanentAddress = truncateTelegramText([donor.area, donor.thana, donor.district].filter(Boolean).filter((value, i, values) => values.indexOf(value) === i).join(', ') || 'ঠিকানা দেওয়া নেই');
   const tier = proximity
     ? (donor.proximity_tier === 1 ? ' • 🎯 একই থানা' : donor.proximity_tier === 2 ? ' • 📍 একই জেলা' : ' • 🌐 নিকটবর্তী')
     : '';
   const number = index === null ? '' : `${index}. `;
   return `${number}<b>${escapeHtml(truncateTelegramText(donor.name || 'নাম দেওয়া নেই', 100))}</b>\n` +
-    `📍 ${escapeHtml(address)}${tier}\n` +
+    `🏠 <b>বর্তমান ঠিকানা:</b> ${escapeHtml(currentAddress)}\n` +
+    `📍 <b>স্থায়ী ঠিকানা:</b> ${escapeHtml(permanentAddress)}${tier}\n` +
     `📞 <code>${escapeHtml(donor.phone || cleanPhone || 'নম্বর নেই')}</code>  |  <a href="${waUrl}">💬 WhatsApp</a>`;
 }
 
@@ -690,7 +692,8 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       if (!req) return tgSendOrEdit(token, targetChatId, targetMsgId, '❌ রিকোয়েস্টটি পাওয়া যায়নি।', [[{ text: '📋 Pending তালিকা', callback_data: 'cb:pending' }]], isCb);
       const claim = await env.DB.prepare("SELECT admin_uid, claimed_at FROM telegram_request_claims WHERE request_id = ?").bind(requestId).first();
       const status = String(req.status || 'Pending');
-      const location = [req.hospital_name, req.district, req.thana, req.location].filter(Boolean).map(escapeHtml).join(', ');
+      const locationParts = [req.hospital_name, req.location, req.thana, req.district].filter(Boolean).map(value => String(value).trim()).filter((value, i, values) => values.indexOf(value) === i);
+      const location = locationParts.map(escapeHtml).join(', ');
       const text = `🧾 <b>রিকোয়েস্ট #${req.id} বিস্তারিত</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
         `💁 সমস্যা: <b>${escapeHtml(req.note || 'দেওয়া হয়নি')}</b>\n🩸 রক্ত: <code>${escapeHtml(req.blood_group)}</code> • ${req.units || 1} ব্যাগ\n` +
         `🚨 Priority: <b>${escapeHtml(req.urgency || 'Urgent')}</b>\n📍 ${location}\n⏰ ${escapeHtml(req.needed_by)}\n` +
@@ -777,7 +780,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       const where = "REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)";
       const [countRow, donorRows] = await Promise.all([
         env.DB.prepare(`SELECT COUNT(*) AS c FROM donors WHERE ${where}`).bind(req.blood_group).first(),
-        env.DB.prepare(`SELECT name, blood_group, phone, area, district, current_address, total_donations FROM donors WHERE ${where} ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT ? OFFSET ?`).bind(req.blood_group, req.district, limit, offset).all()
+        env.DB.prepare(`SELECT name, blood_group, phone, area, thana, district, current_address, total_donations FROM donors WHERE ${where} ORDER BY CASE WHEN district = ? THEN 0 ELSE 1 END, id DESC LIMIT ? OFFSET ?`).bind(req.blood_group, req.district, limit, offset).all()
       ]);
       const total = countRow?.c || 0;
       const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -933,7 +936,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
         const where = "REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') AND ((is_available = 1 OR (next_available_date IS NOT NULL AND next_available_date <= date('now'))) AND is_active = 1)";
         const [countRow, donorRows] = await Promise.all([
           env.DB.prepare(`SELECT COUNT(*) AS c FROM donors WHERE ${where}`).bind(bg).first(),
-        env.DB.prepare(`SELECT id, name, phone, district, area, current_address, last_donation_date, total_donations FROM donors WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).bind(bg, limit, offset).all()
+        env.DB.prepare(`SELECT id, name, phone, district, area, thana, current_address, last_donation_date, total_donations FROM donors WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).bind(bg, limit, offset).all()
         ]);
         const total = countRow?.c || 0;
         const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -991,7 +994,7 @@ async function handleTelegramUpdate(update, env, ctx, publicOrigin = null) {
       if (stateRow?.state === 'donor_search' && text && !text.startsWith('/')) {
         await env.DB.prepare("DELETE FROM bot_admin_states WHERE admin_uid = ?").bind(String(fromId)).run();
         const term = text.trim().slice(0, 80);
-        const { results } = await env.DB.prepare("SELECT name, blood_group, phone, district, area, current_address, is_available FROM donors WHERE name LIKE ? OR phone LIKE ? OR district LIKE ? OR area LIKE ? OR current_address LIKE ? OR REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') ORDER BY id DESC LIMIT 10").bind(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, term).all();
+        const { results } = await env.DB.prepare("SELECT name, blood_group, phone, district, area, thana, current_address, is_available FROM donors WHERE name LIKE ? OR phone LIKE ? OR district LIKE ? OR area LIKE ? OR current_address LIKE ? OR REPLACE(UPPER(TRIM(blood_group)), ' ', '') = REPLACE(UPPER(TRIM(?)), ' ', '') ORDER BY id DESC LIMIT 10").bind(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, term).all();
         const rows = results || [];
         const textOut = rows.length ? `🔍 <b>${escapeHtml(term)}</b>-এর জন্য ${rows.length} জন ডোনার:\n────────────────────\n` + rows.map((d, i) => `${formatTelegramDonor(d, i + 1, false)}\n🩸 গ্রুপ: <code>${escapeHtml(d.blood_group)}</code>`).join("\n\n") : `⚠️ <b>${escapeHtml(term)}</b>-এর জন্য কোনো ডোনার পাওয়া যায়নি।`;
         await tgSendMessage(token, chatId, textOut, [[{ text: "🔍 আবার সার্চ", callback_data: "cb:donor_search" }], [{ text: "🔙 মূল মেনু", callback_data: "cb:menu" }]]);
