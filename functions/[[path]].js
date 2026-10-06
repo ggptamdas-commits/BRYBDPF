@@ -104,7 +104,9 @@ async function sha256Hex(message) {
 
 const DEFAULT_CAPTCHA_SECRET = "";
 const VALID_BLOOD_GROUPS = new Set(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
-const VALID_REQUEST_DISTRICTS = new Set(["রংপুর", "নীলফামারী", "দিনাজপুর", "কুড়িগ্রাম", "লালমনিরহাট", "গাইবান্ধা", "ঠাকুরগাঁও", "পঞ্চগড়"]);
+const VALID_SUPPORTED_DISTRICTS = new Set(["রংপুর", "নীলফামারী", "দিনাজপুর", "কুড়িগ্রাম", "লালমনিরহাট", "গাইবান্ধা", "ঠাকুরগাঁও", "পঞ্চগড়", "গাজীপুর", "ঢাকা"]);
+const VALID_REQUEST_DISTRICTS = VALID_SUPPORTED_DISTRICTS;
+const VALID_DHAKA_THANAS = new Set(["সাভার", "আশুলিয়া"]);
 
 async function generateCaptcha(env) {
   const num1 = Math.floor(Math.random() * 8) + 2;
@@ -1225,6 +1227,14 @@ export async function onRequest(context) {
           if (!name || !blood_group || !phone || !district || !String(current_address || '').trim()) {
             return json({ error: "সকল প্রয়োজনীয় তথ্য সঠিকভাবে পূরণ করুন।" }, 400);
           }
+          const normalizedDistrict = String(district).trim();
+          const normalizedThana = String(thana || '').trim();
+          if (!VALID_SUPPORTED_DISTRICTS.has(normalizedDistrict)) {
+            return json({ error: "এই জেলার জন্য নিবন্ধন শিগগিরই চালু হবে।", code: "UNSUPPORTED_DISTRICT" }, 400);
+          }
+          if (normalizedDistrict === "ঢাকা" && !VALID_DHAKA_THANAS.has(normalizedThana)) {
+            return json({ error: "ঢাকা জেলার জন্য শুধু সাভার বা আশুলিয়া নির্বাচন করুন।", code: "UNSUPPORTED_DHAKA_AREA" }, 400);
+          }
           if (!agreed_future_donation || !agreed_data_save) {
             return json({ error: "রেজিস্ট্রেশন সম্পন্ন করতে প্রয়োজনীয় সম্মতিতে টিক দিন।", code: "CONSENT_REQUIRED" }, 400);
           }
@@ -1260,8 +1270,8 @@ export async function onRequest(context) {
             name.trim().slice(0, 120),
             normalizedBloodGroup,
             cleanPhone,
-            district.trim().slice(0, 120),
-            (thana || "").trim().slice(0, 120),
+            normalizedDistrict.slice(0, 120),
+            normalizedThana.slice(0, 120),
             (area || "").trim(),
             String(current_address).trim().slice(0, 300),
             normalizedAge,
